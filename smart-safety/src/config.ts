@@ -9,7 +9,7 @@ import Constants from "expo-constants";
 export const SERVER_URL =
   Constants.expoConfig?.extra?.SERVER_URL ||
   process.env.SERVER_URL ||
-  "https://lover-guru-ladies-what.trycloudflare.com";
+  "https://safe-tourist-backend-ix0g.onrender.com";
 
 // AI model URLs for getting safety score predictions
 export const GEO_MODEL_URL =
