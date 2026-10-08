@@ -282,9 +282,7 @@ export async function fetchDynamicGeofences(
 
               if (h.geometry.type === 'Point') {
                 coords = [h.geometry.coordinates[1], h.geometry.coordinates[0]]; // [lat, lng]
-                type = 'point';
-                radiusKm = h.radiusKm || 0; // Use source radius if present
-
+                radiusKm = h.severity === 'Critical' ? 5 : h.severity === 'High' ? 2 : 1;
               } else if (h.geometry.type === 'Polygon') {
                 type = 'polygon';
                 // GeoJSON is [lng, lat] for polygon coords, we need [lat, lng]

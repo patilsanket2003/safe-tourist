@@ -574,7 +574,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               try {
                 triggerSirenAlert(
                   `⚠️ RESTRICTED ZONE: ${fence.name}`,
-                  `You have entered a restricted/dangerous area. Leave immediately!`
+                  `Be alert and drive carefully, you are near or entering this kind of region: ${category || 'restricted zone'}`
                 );
               } catch (e) {
                 /* ignore */
@@ -605,6 +605,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 longitude: location.longitude,
               },
             });
+          } catch (e) {
+            /* ignore */
+          }
+        });
+
+        geofenceService.on("approaching", ({ fence, location }) => {
+          try {
+            const category = (fence.category || "").toLowerCase();
+            const needsSiren = 
+              category.includes('lightning') || category.includes('thunderstorm') ||
+              category.includes('flood') || 
+              category.includes('hilly') || category.includes('steep terrain') ||
+              category.includes('landslide') || 
+              category.includes('forest fire') || 
+              category.includes('restricted') || category.includes('no-entry') ||
+              category.includes('wildlife') || category.includes('protected');
+
+            if (needsSiren) {
+              triggerSirenAlert(
+                `⚠️ APPROACHING RESTRICTED ZONE`,
+                `Be alert and drive carefully, you are approaching a ${category || 'restricted'} region: ${fence.name}`
+              );
+            }
           } catch (e) {
             /* ignore */
           }

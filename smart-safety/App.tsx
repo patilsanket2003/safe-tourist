@@ -13,6 +13,7 @@ import { View, Text, ActivityIndicator, AppState } from "react-native"
 import React from "react"
 import { configureNotificationHandler } from "./src/utils/notificationsCompat"
 import { requestNotificationPermission } from "./src/utils/notificationPermissions"
+import DaminiAssistant from "./src/features/ai/components/DaminiAssistant"
 
 // Ensure background tasks are defined at startup.
 import "./src/services/backgroundLocation";
@@ -135,6 +136,7 @@ function AppContent() {
             <NavigationContainer theme={navTheme}>
               <StatusBar style="auto" />
               <RootNavigator />
+              <DaminiAssistant />
             </NavigationContainer>
           </PaperProvider>
         </PathDeviationProvider>

@@ -5,19 +5,39 @@ const { daminiToolsDefinition, daminiToolsHandlers } = require('./daminiTools');
 const API_KEY = process.env.GEMINI_API_KEY || 'AQ.Ab8RN6II9hyEXCLVQBud0JjBtFc56CsJF0wPgfuW4JEljLcK0Q';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-const systemInstruction = `You are Damini AI, a Smart Tourist Safety Assistant for India and globally. 
-You are a friendly, professional female AI assistant focused on tourist safety.
-You MUST use your tools (getNearbySafetyZones, getCurrentWeather, etc.) to get real data for the user's location or route when they ask about safety, weather, traffic, or disruptions.
-NEVER invent or hallucinate accidents, protests, riots, traffic, floods, or weather. If you don't have data, say "I couldn't verify current information for that area."
-Never say "100% safe" or "Nothing will happen". Say "No significant verified hazard was found in the available data."
-Categorize risk as: LOW RISK, CAUTION, HIGH RISK, VERY HIGH RISK, or DATA UNAVAILABLE.
-If the user says "Help me" or "Emergency", output exactly "ACTIVATING_EMERGENCY_MODE" in your response (the frontend will catch this).
+const systemInstruction = `You are Damini AI, a Smart Tourist Safety Assistant for India and globally, but you are also a highly capable general-purpose AI assistant like ChatGPT or Gemini.
+You are a friendly, professional female AI assistant. You can answer general knowledge questions, chat casually, and provide any help the user needs.
+When the user specifically asks about safety, weather, traffic, or disruptions, you MUST use your tools (getNearbySafetyZones, getCurrentWeather, etc.) to get real data for their location.
+For safety queries ONLY:
+- NEVER invent or hallucinate accidents, protests, riots, traffic, floods, or weather. If you don't have data, say "I couldn't verify current information for that area."
+- Never say "100% safe". Say "No significant verified hazard was found."
+- Categorize risk as: LOW RISK, CAUTION, HIGH RISK, VERY HIGH RISK, or DATA UNAVAILABLE.
+If the user says "Help me" or "Emergency", output exactly "ACTIVATING_EMERGENCY_MODE" in your response.
+For all other general questions (general knowledge, chitchat, translation, advice, etc.), just answer them normally, accurately, and naturally without mentioning safety risks unless relevant.
 `;
 
+const axios = require('axios');
+
 exports.processMessage = async ({ message, location, route, conversationId }) => {
+  let locationContext = `Lat: ${location?.latitude || 'Unknown'}, Lng: ${location?.longitude || 'Unknown'}`;
+  
+  // Reverse geocode to get the exact address so the AI has hyper-local context without hardcoding
+  if (location?.latitude && location?.longitude) {
+    try {
+      const geoRes = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}&zoom=18&addressdetails=1`, {
+        headers: { 'User-Agent': 'SmartTouristSafetyApp/1.0' }
+      });
+      if (geoRes.data && geoRes.data.display_name) {
+        locationContext += `\nExact Address: ${geoRes.data.display_name}`;
+      }
+    } catch (e) {
+      console.error("Reverse Geocoding failed:", e.message);
+    }
+  }
+
   try {
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
       systemInstruction: systemInstruction,
       tools: [{ functionDeclarations: daminiToolsDefinition }] 
     });
@@ -26,7 +46,7 @@ exports.processMessage = async ({ message, location, route, conversationId }) =>
       history: [
         {
           role: "user",
-          parts: [{ text: `Context: My current location is Lat: ${location?.latitude || 'Unknown'}, Lng: ${location?.longitude || 'Unknown'}.` }]
+          parts: [{ text: `Context: My current location is ${locationContext}.` }]
         },
         {
           role: "model",
@@ -39,8 +59,8 @@ exports.processMessage = async ({ message, location, route, conversationId }) =>
     let result = await chat.sendMessage(message);
     let response = result.response;
 
-    // Check if the model wants to call a function
-    let call = response.functionCalls ? response.functionCalls()[0] : null;
+    const calls = typeof response.functionCalls === 'function' ? response.functionCalls() : response.functionCalls;
+    let call = (calls && calls.length > 0) ? calls[0] : null;
     let loopCount = 0;
     
     // Handle multiple tool calls in a loop (up to 3 times to prevent infinite loops)
@@ -68,7 +88,8 @@ exports.processMessage = async ({ message, location, route, conversationId }) =>
       }]);
       
       response = result.response;
-      call = response.functionCalls ? response.functionCalls()[0] : null;
+      const nextCalls = typeof response.functionCalls === 'function' ? response.functionCalls() : response.functionCalls;
+      call = (nextCalls && nextCalls.length > 0) ? nextCalls[0] : null;
       loopCount++;
     }
 

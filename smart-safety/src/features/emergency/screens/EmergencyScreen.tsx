@@ -64,6 +64,7 @@ export default function EmergencyScreen({ navigation }: any) {
   const [isStyleSheetExpanded, setIsStyleSheetExpanded] = useState(false)
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false)
   const [isLegendExpanded, setIsLegendExpanded] = useState(false)
+  const [showHazards, setShowHazards] = useState(true)
 
   // Directions Mode State
   const [directionsMode, setDirectionsMode] = useState(false)
@@ -225,17 +226,17 @@ export default function EmergencyScreen({ navigation }: any) {
 
   // Send geofences to WebView when ready
   useEffect(() => {
-    if (!webViewRef.current || !mapReady || !geoFences.length) return
+    if (!webViewRef.current || !mapReady) return
 
     try {
       webViewRef.current.postMessage(JSON.stringify({
         type: 'setGeoFences',
-        fences: geoFences
+        fences: showHazards ? geoFences : []
       }))
     } catch (e) {
       console.warn('Failed to send geofences to WebView', e)
     }
-  }, [mapReady, geoFences])
+  }, [mapReady, geoFences, showHazards])
 
   // Fetch POIs when route changes
   useEffect(() => {
@@ -1131,6 +1132,8 @@ export default function EmergencyScreen({ navigation }: any) {
           }}
           hideDirectionsButton={directionsMode}
           visible={!isDirectionsSheetVisible}
+          showHazards={showHazards}
+          onToggleHazards={() => setShowHazards(prev => !prev)}
         />
       )}
 
@@ -1196,7 +1199,6 @@ export default function EmergencyScreen({ navigation }: any) {
         latitude={currentLocation?.coords?.latitude ?? 0}
         longitude={currentLocation?.coords?.longitude ?? 0}
       />
-      <DaminiAssistant />
     </View>
   )
 }

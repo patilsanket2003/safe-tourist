@@ -1,6 +1,18 @@
 const { DangerZone } = require('../../models/Geofence');
 const GlobalHazard = require('../../models/GlobalHazard');
 
+// Haversine formula to calculate distance in km
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
 // Define the tools for Gemini API
 const daminiToolsDefinition = [
   {
@@ -64,14 +76,13 @@ const daminiToolsHandlers = {
       // Find danger zones (protests, riots, custom admins zones)
       const maxDistanceMeters = radiusKm * 1000;
       
-      const dangerZones = await DangerZone.find({
-        'coords.0': {
-          $nearSphere: {
-            $geometry: { type: 'Point', coordinates: [longitude, latitude] },
-            $maxDistance: maxDistanceMeters
-          }
-        },
-        active: true
+      // Fetch active danger zones and filter by distance manually since they lack a 2dsphere index
+      const allDangerZones = await DangerZone.find({ active: true });
+      const dangerZones = allDangerZones.filter(z => {
+        if (!z.coords || z.coords.length < 2) return false;
+        // z.coords is [lat, lng]
+        const d = calculateDistance(latitude, longitude, z.coords[0], z.coords[1]);
+        return d <= radiusKm;
       });
 
       // Find global hazards (fires, floods, landslides, restricted areas) from NASA/OSM

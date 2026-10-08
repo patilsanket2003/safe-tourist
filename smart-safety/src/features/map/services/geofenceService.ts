@@ -134,7 +134,7 @@ function computeFenceState(f: GeoFence, location: Location.LocationObjectCoords)
     const radiusKm = f.radiusKm || 1
     const d = haversineKm(pt, center)
     if (d <= radiusKm) return 'inside'
-    if (d <= radiusKm + 0.5) return 'approaching'
+    if (d <= radiusKm + 1.0) return 'approaching' // Alert when within 1km
     return 'outside'
   }
 
@@ -142,7 +142,7 @@ function computeFenceState(f: GeoFence, location: Location.LocationObjectCoords)
     const center = f.coords as number[]
     const d = haversineKm(pt, center)
     if (d <= 0.2) return 'inside'
-    if (d <= 1) return 'approaching'
+    if (d <= 1.0) return 'approaching' // Alert when within 1km
     return 'outside'
   }
 
@@ -154,11 +154,11 @@ function computeFenceState(f: GeoFence, location: Location.LocationObjectCoords)
   return 'outside'
 }
 
-export function on(event: 'enter' | 'exit' | 'state' | 'primary' | 'location', cb: (payload: any) => void) {
+export function on(event: 'enter' | 'exit' | 'state' | 'primary' | 'location' | 'approaching', cb: (payload: any) => void) {
   emitter.on(event, cb)
 }
 
-export function off(event: 'enter' | 'exit' | 'state' | 'primary' | 'location', cb: (payload: any) => void) {
+export function off(event: 'enter' | 'exit' | 'state' | 'primary' | 'location' | 'approaching', cb: (payload: any) => void) {
   emitter.off(event, cb)
 }
 
@@ -216,6 +216,7 @@ export async function startMonitoring(options?: { accuracy?: Location.LocationAc
           emitter.emit('state', { fence: f, prev, current: s.candidate, location: loc.coords })
           if (prev !== 'inside' && s.candidate === 'inside') emitter.emit('enter', { fence: f, location: loc.coords })
           if (prev === 'inside' && s.candidate !== 'inside') emitter.emit('exit', { fence: f, location: loc.coords })
+          if (prev === 'outside' && s.candidate === 'approaching') emitter.emit('approaching', { fence: f, location: loc.coords })
         }
       } catch (e) {
         console.warn('fence eval error', e)

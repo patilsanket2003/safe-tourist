@@ -61,6 +61,7 @@ const OsmMap = forwardRef(({
   const [geoFencesToSend, setGeoFencesToSend] = useState<GeoFence[]>([]);
   const [lastLocationForFilter, setLastLocationForFilter] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState<boolean>(false);
+  const [showHazards, setShowHazards] = useState(false); // Default to hiding hazards initially to unclutter map
 
   const webViewRef = useRef<WebView>(null);
 
@@ -187,17 +188,18 @@ const OsmMap = forwardRef(({
   useEffect(() => {
     if (!webViewRef.current || !mapReady) return;
 
-    const fences = geoFences || geoFencesToSend;
-    if (!Array.isArray(fences)) return;
+    const allFences = geoFences || geoFencesToSend;
+    const fences = showHazards ? allFences : [];
+
+    if (!Array.isArray(allFences)) return;
 
     try {
-      console.log(`Sending ${fences.length} geofences to WebView, including custom fences:`, 
-        fences.filter(f => f.id && f.id.startsWith('custom')).map(f => f.name));
+      console.log(`Sending ${fences.length} geofences to WebView (out of ${allFences.length} total)`);
       webViewRef.current.postMessage(JSON.stringify({ type: 'setGeoFences', fences }));
     } catch (e) {
       console.warn('failed to post geoFences to webview', e);
     }
-  }, [mapReady, geoFences, geoFencesToSend]);
+  }, [mapReady, geoFences, geoFencesToSend, showHazards]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -418,6 +420,8 @@ const currentLocation = await Location.getCurrentPositionAsync(locationOptions);
           onShareLocation={shareLocation}
           onToggleFullScreen={onToggleFullScreen ? () => onToggleFullScreen(!isFullScreen) : undefined}
           isFullScreen={!!isFullScreen}
+          showHazards={showHazards}
+          onToggleHazards={() => setShowHazards(!showHazards)}
         />
     </View>
   );

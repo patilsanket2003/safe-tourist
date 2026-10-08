@@ -10,6 +10,8 @@ interface MapActionButtonsProps {
   onShareLocation: () => void;
   onToggleFullScreen?: () => void;
   isFullScreen?: boolean;
+  showHazards?: boolean;
+  onToggleHazards?: () => void;
 }
 
 const MapActionButtons = ({
@@ -19,7 +21,9 @@ const MapActionButtons = ({
   onOpenExternalMap,
   onShareLocation,
   onToggleFullScreen,
-  isFullScreen
+  isFullScreen,
+  showHazards,
+  onToggleHazards
 }: MapActionButtonsProps) => {
   return (
     <View style={styles.actionsRow}>
@@ -42,6 +46,17 @@ const MapActionButtons = ({
       >
         Open Map
       </Button> */}
+
+      {onToggleHazards && (
+        <Button
+          mode="outlined"
+          onPress={onToggleHazards}
+          compact
+          icon={showHazards ? 'eye-off' : 'eye'}
+        >
+          {showHazards ? 'Hide Zones' : 'Show Zones'}
+        </Button>
+      )}
       
       {onToggleFullScreen && (
         <Button

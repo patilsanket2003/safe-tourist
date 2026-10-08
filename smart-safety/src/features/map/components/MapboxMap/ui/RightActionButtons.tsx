@@ -12,6 +12,8 @@ interface RightActionButtonsProps {
     hideCompassButton?: boolean;
     customBottom?: number;
     visible?: boolean;
+    showHazards?: boolean;
+    onToggleHazards?: () => void;
 }
 
 export default function RightActionButtons({
@@ -24,6 +26,8 @@ export default function RightActionButtons({
     hideCompassButton = false,
     customBottom,
     visible = true,
+    showHazards = true,
+    onToggleHazards,
 }: RightActionButtonsProps) {
     if (!visible) return null;
     return (
@@ -69,6 +73,17 @@ export default function RightActionButtons({
                         activeOpacity={0.85}
                     >
                         <MaterialCommunityIcons name="map-legend" size={20} color="#10B981" />
+                    </TouchableOpacity>
+                )}
+
+                {/* Toggle Hazards Button */}
+                {onToggleHazards && (
+                    <TouchableOpacity
+                        style={[styles.button, styles.hazardsButton]}
+                        onPress={onToggleHazards}
+                        activeOpacity={0.85}
+                    >
+                        <MaterialCommunityIcons name={showHazards ? 'eye' : 'eye-off'} size={20} color="#F59E0B" />
                     </TouchableOpacity>
                 )}
             </View>
@@ -122,6 +137,10 @@ const styles = StyleSheet.create({
     legendButton: {
         backgroundColor: '#f0fdf4',
         borderColor: '#d1fae5',
+    },
+    hazardsButton: {
+        backgroundColor: '#fffbeb',
+        borderColor: '#fef3c7',
     },
     sosButton: {
         backgroundColor: '#EF4444',

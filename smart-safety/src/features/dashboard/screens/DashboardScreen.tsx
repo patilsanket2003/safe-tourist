@@ -882,7 +882,6 @@ export default function DashboardScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
-      <DaminiAssistant />
     </View>
   );
 }

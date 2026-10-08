@@ -205,7 +205,7 @@ function getStatusStyle(status: string) {
 const styles = StyleSheet.create({
   floatingButtonContainer: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 90,
     right: 24,
     zIndex: 1000,
   },

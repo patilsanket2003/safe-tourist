@@ -8,8 +8,6 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
-      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
       <style>
           body { margin: 0; padding: 0; }
           #map { height: 100vh; width: 100vw; }
@@ -97,7 +95,6 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
       <!-- Import Turf.js for geospatial operations -->
       <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/7.2.0/turf.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
-      <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
       <script>
           let map;
           let locationMarker;
@@ -180,11 +177,7 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
                   }
                   
                   // Initialize geofence and route layer groups
-                  if (typeof L.markerClusterGroup !== 'undefined') {
-                      geoFenceLayerGroup = L.markerClusterGroup({ maxClusterRadius: 50, disableClusteringAtZoom: 13 }).addTo(map);
-                  } else {
-                      geoFenceLayerGroup = L.layerGroup().addTo(map);
-                  }
+                  geoFenceLayerGroup = L.layerGroup().addTo(map);
                   geoFenceLayers = {};
                   routeLayerGroup = L.layerGroup().addTo(map);
                   poiLayerGroup = L.layerGroup().addTo(map);
@@ -240,16 +233,7 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
 
                   if (!geoFenceLayerGroup) {
                       console.log('Creating geofence layer group');
-                      // Use MarkerClusterGroup for point-based hazards
-                      if (typeof L.markerClusterGroup !== 'undefined') {
-                          geoFenceLayerGroup = L.markerClusterGroup({
-                              maxClusterRadius: 50,
-                              disableClusteringAtZoom: 13,
-                              spiderfyOnMaxZoom: true
-                          }).addTo(map);
-                      } else {
-                          geoFenceLayerGroup = L.layerGroup().addTo(map);
-                      }
+                      geoFenceLayerGroup = L.layerGroup().addTo(map);
                   }
 
                   // Clear existing geofence layers
