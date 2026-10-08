@@ -215,7 +215,7 @@ class HazardDataImporter {
           nwr["boundary"="national_park"](area.searchArea);
           nwr["leisure"="nature_reserve"](area.searchArea);
         );
-        out center;
+        out geom;
       `;
       
       const response = await axios.get(
@@ -227,26 +227,58 @@ class HazardDataImporter {
       let importedCount = 0;
 
       for (const el of elements) {
-        if (!el.center && (!el.lat || !el.lon)) continue;
-        
-        const lat = el.center ? el.center.lat : el.lat;
-        const lon = el.center ? el.center.lon : el.lon;
-
-        const isRestricted = el.tags.military || el.tags.landuse === 'military';
+        let geometry = null;
+        let name = el.tags?.name || 'Restricted Zone';
+        const isRestricted = el.tags?.military || el.tags?.landuse === 'military';
         const type = isRestricted ? 'restricted area' : 'protected area';
         const severity = isRestricted ? 'Critical' : 'High';
-        const name = el.tags.name || (isRestricted ? 'Restricted Military Zone' : 'Protected Wildlife Reserve');
         
+        if (el.type === 'node' && el.lat && el.lon) {
+           geometry = { type: 'Point', coordinates: [el.lon, el.lat] };
+        } else if (el.type === 'way' && el.geometry) {
+           const coords = el.geometry.map(pt => [pt.lon, pt.lat]);
+           // Ensure closed polygon
+           if (coords.length > 0 && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
+             coords.push([...coords[0]]);
+           }
+           if (coords.length >= 4) {
+             geometry = { type: 'Polygon', coordinates: [coords] };
+           } else {
+             geometry = { type: 'Point', coordinates: [coords[0][0], coords[0][1]] };
+           }
+        } else if (el.type === 'relation' && el.members) {
+           // Simplistic relation parsing: grab the outer ways if available, else first node
+           const outerWays = el.members.filter(m => m.type === 'way' && m.role === 'outer' && m.geometry);
+           if (outerWays.length > 0) {
+             const coords = outerWays[0].geometry.map(pt => [pt.lon, pt.lat]);
+             if (coords.length > 0 && (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1])) {
+               coords.push([...coords[0]]);
+             }
+             if (coords.length >= 4) {
+               geometry = { type: 'Polygon', coordinates: [coords] };
+             }
+           }
+           if (!geometry) {
+               // fallback to center if we can't parse it easily
+               if (el.bounds) {
+                   const centerLon = (el.bounds.minlon + el.bounds.maxlon) / 2;
+                   const centerLat = (el.bounds.minlat + el.bounds.maxlat) / 2;
+                   geometry = { type: 'Point', coordinates: [centerLon, centerLat] };
+               } else {
+                   continue;
+               }
+           }
+        } else {
+           continue;
+        }
+
         const source_id = `osm-area-${el.id}`;
         
         const hazardData = {
           name,
           type: type,
           severity: severity,
-          geometry: {
-            type: 'Point',
-            coordinates: [lon, lat]
-          },
+          geometry: geometry,
           source: 'OpenStreetMap',
           description: `OSM ${type}: ${name}`,
           active: true
