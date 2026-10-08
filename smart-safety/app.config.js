@@ -42,9 +42,7 @@ module.exports = ({ config }) => {
   }
 
   // Backend URLs for runtime network calls (REST + safety service)
-  if (process.env.SERVER_URL) {
-    config.extra.SERVER_URL = process.env.SERVER_URL;
-  }
+  config.extra.SERVER_URL = process.env.SERVER_URL || "https://safe-tourist-backend-ix0g.onrender.com";
   if (process.env.PATH_DEVIATION_API_URL) {
     config.extra.PATH_DEVIATION_API_URL = process.env.PATH_DEVIATION_API_URL;
   }
