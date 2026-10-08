@@ -170,13 +170,25 @@ class HazardDataImporter {
         const source_id = `nasa-eonet-${event.id}`;
         const geom = event.geometry[event.geometry.length - 1]; // Get latest geometry
 
+        if (!geom || !geom.coordinates) continue;
+
+        let coords = geom.coordinates;
+        if (geom.type === 'Point' && Array.isArray(coords)) {
+          let [lng, lat] = coords;
+          if (typeof lng !== 'number' || typeof lat !== 'number') continue;
+          while (lng > 180) lng -= 360;
+          while (lng < -180) lng += 360;
+          if (lat < -90 || lat > 90) continue;
+          coords = [lng, lat];
+        }
+
         const hazardData = {
           name: event.title,
           type: type,
           severity: severity,
           geometry: {
             type: geom.type,
-            coordinates: geom.coordinates
+            coordinates: coords
           },
           source: 'NASA EONET',
           description: `Active ${categoryTitle}: ${event.title}`,

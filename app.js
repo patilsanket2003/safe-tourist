@@ -3,6 +3,21 @@ const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
 const cron = require("node-cron");
+const dns = require("dns");
+
+// Ensure DNS resolves correctly for MongoDB SRV lookups on macOS and varied network environments
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch (e) {}
+
+// Crash protection guards
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("⚠️ [Safety Guard] Unhandled Rejection:", reason?.message || reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("⚠️ [Safety Guard] Uncaught Exception:", err?.message || err);
+});
 const { PORT, NODE_ENV } = require("./config/config");
 const connectDB = require("./config/dbConnection");
 const authRoutes = require("./routes/authRoutes");
