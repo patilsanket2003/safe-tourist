@@ -1,0 +1,216 @@
+name: Build, Deploy to ACR & Azure App Service
+
+on:
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  REGISTRY_NAME: waypoint101
+  AZURE_WEBAPP_NAME: smart-safety-backend
+  RESOURCE_GROUP: sih-hackathon
+  IMAGE_NAME: smart-safety-backend
+  LOCATION: southindia
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    outputs:
+      app-url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set Azure subscription
+      env:
+        SUBSCRIPTION_ID: ${{ secrets.SUBSCRIPTION_ID }}
+      run: |
+        echo "Setting Azure subscription to $SUBSCRIPTION_ID"
+        az account set --subscription $SUBSCRIPTION_ID
+
+    - name: Ensure Resource Group exists
+      run: |
+        az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.LOCATION }} --output none
+        echo "Resource group '${{ env.RESOURCE_GROUP }}' is ready"
+
+    - name: Create ACR if not exists
+      run: |
+        if ! az acr show --name ${{ env.REGISTRY_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &>/dev/null; then
+          echo "Creating new Azure Container Registry..."
+          az acr create \
+            --name ${{ env.REGISTRY_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --sku Standard \
+            --admin-enabled true \
+            --location ${{ env.LOCATION }}
+          echo "ACR '${{ env.REGISTRY_NAME }}' created successfully"
+        else
+          echo "ACR '${{ env.REGISTRY_NAME }}' already exists"
+        fi
+
+    - name: Use ACR credentials from secrets
+      id: acr-creds
+      run: |
+        echo "username=${{ secrets.ACR_USERNAME }}" >> $GITHUB_OUTPUT
+        echo "password=${{ secrets.ACR_PASSWORD }}" >> $GITHUB_OUTPUT
+        echo "registry=${{ env.REGISTRY_NAME }}.azurecr.io" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Azure Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.acr-creds.outputs.registry }}
+        username: ${{ steps.acr-creds.outputs.username }}
+        password: ${{ steps.acr-creds.outputs.password }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ steps.acr-creds.outputs.registry }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+
+    - name: Create App Service Plan if needed
+      env:
+        SUBSCRIPTION_ID: ${{ secrets.SUBSCRIPTION_ID }}
+        PLAN_NAME: ${{ secrets.PLAN_NAME }}
+      run: |
+        if ! az appservice plan show --name $PLAN_NAME --resource-group ${{ env.RESOURCE_GROUP }} --subscription $SUBSCRIPTION_ID &>/dev/null; then
+          echo "Creating App Service Plan '$PLAN_NAME'..."
+          az appservice plan create \
+            --name $PLAN_NAME \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --sku B1 \
+            --is-linux \
+            --location ${{ env.LOCATION }} \
+            --subscription $SUBSCRIPTION_ID
+          echo "App Service Plan created successfully"
+        else
+          echo "App Service Plan '$PLAN_NAME' already exists"
+        fi
+
+    - name: Create Web App if needed
+      env:
+        SUBSCRIPTION_ID: ${{ secrets.SUBSCRIPTION_ID }}
+        PLAN_NAME: ${{ secrets.PLAN_NAME }}
+      run: |
+        if ! az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --subscription $SUBSCRIPTION_ID &>/dev/null; then
+          echo "Creating new Azure Web App..."
+          az webapp create \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --plan $PLAN_NAME \
+            --subscription $SUBSCRIPTION_ID \
+            --deployment-container-image-name nginx:latest
+          echo "Web App '${{ env.AZURE_WEBAPP_NAME }}' created successfully"
+        else
+          echo "Web App '${{ env.AZURE_WEBAPP_NAME }}' already exists"
+        fi
+
+    - name: Configure Web App settings
+      run: |
+        # Configure container registry settings
+        az webapp config container set \
+          --name ${{ env.AZURE_WEBAPP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --docker-custom-image-name ${{ steps.acr-creds.outputs.registry }}/${{ env.IMAGE_NAME }}:latest \
+          --docker-registry-server-url https://${{ steps.acr-creds.outputs.registry }} \
+          --docker-registry-server-user ${{ steps.acr-creds.outputs.username }} \
+          --docker-registry-server-password ${{ steps.acr-creds.outputs.password }}
+
+        # Set additional app settings
+        az webapp config appsettings set \
+          --name ${{ env.AZURE_WEBAPP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --settings \
+            WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+            WEBSITES_PORT=3000 \
+            NODE_ENV=production \
+            PORT=3000
+
+    - name: Deploy to Azure Web App
+      id: deploy-to-webapp
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        images: ${{ steps.acr-creds.outputs.registry }}/${{ env.IMAGE_NAME }}:latest
+
+    - name: Restart Web App
+      run: |
+        az webapp restart --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }}
+        echo "Web App restarted successfully"
+
+    - name: Wait for deployment to be ready
+      run: |
+        echo "Waiting for deployment to be ready..."
+        sleep 30
+        
+        # Health check
+        for i in {1..10}; do
+          if curl -f -s "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net" > /dev/null; then
+            echo "App is responding!"
+            break
+          elif [ $i -eq 10 ]; then
+            echo "App might still be starting up..."
+          else
+            echo "Attempt $i: App not ready yet, waiting 15 seconds..."
+            sleep 15
+          fi
+        done
+
+  notify-success:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+    - name: Deployment Success Notification
+      run: |
+        echo "=================================="
+        echo "DEPLOYMENT SUCCESSFUL!"
+        echo "=================================="
+        echo ""
+        echo "Your Backend API is now live at:"
+        echo "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        echo ""
+        echo "Quick Health Check Commands:"
+        echo "curl https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        echo "curl https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health"
+
+  notify-failure:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    steps:
+    - name: Deployment Failed Notification
+      run: |
+        echo "=================================="
+        echo "DEPLOYMENT FAILED!"
+        echo "=================================="
+        echo ""
+        echo "Please check the logs above for error details."

@@ -1,0 +1,42 @@
+# Node modules
+node_modules
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# Editor directories and files
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+dist
+build
+coverage
+
+# Docker and Compose files (if you keep them locally but don't want them in the image)
+Dockerfile
+docker-compose*.yml
+
+# Misc
+.cache
+.parcel-cache
+.nyc_output
+coverage

@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+    volumes:
+      - ./:/usr/src/app:cached
+      - ./.env:/usr/src/app/.env:ro
+      - node_modules:/usr/src/app/node_modules
+    restart: unless-stopped
+
+volumes:
+  node_modules: {}

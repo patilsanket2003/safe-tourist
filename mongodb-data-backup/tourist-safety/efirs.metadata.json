@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"touristId":{"$numberInt":"1"},"filedAt":{"$numberInt":"-1"}},"name":"touristId_1_filedAt_-1","background":true}],"uuid":"b95cf5d1e67f41bd8b661db1c4aa6c69","collectionName":"efirs","type":"collection"}
