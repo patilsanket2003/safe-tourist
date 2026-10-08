@@ -1,5 +1,10 @@
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:5001");
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")
+    ? "https://safe-tourist-backend-ix0g.onrender.com"
+    : typeof window !== "undefined"
+      ? window.location.origin
+      : "https://safe-tourist-backend-ix0g.onrender.com");
 
 // Path Deviation backend — deployed on Render
 // Previously pointed to localhost:8000 which caused live location sharing to break.
