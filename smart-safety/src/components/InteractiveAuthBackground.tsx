@@ -152,7 +152,7 @@ export default function InteractiveAuthBackground() {
           },
         ]}
       >
-        {/* Subtle Tech Grid Lines (matching reference design layout) */}
+        {/* Subtle Tech Grid Lines */}
         <div
           style={{
             position: "absolute",
@@ -196,7 +196,7 @@ export default function InteractiveAuthBackground() {
           <span
             style={{
               fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-              fontSize: "clamp(3.5rem, 9vw, 6.5rem)",
+              fontSize: "clamp(3rem, 8vw, 5.5rem)",
               fontWeight: 900,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -213,7 +213,7 @@ export default function InteractiveAuthBackground() {
           </span>
         </div>
 
-        {/* 3D WebGL Globe Container */}
+        {/* Dynamic Canvas Container with Interactive Globe & Animated Walking Pedestrian */}
         <div
           style={{
             position: "absolute",
@@ -250,11 +250,128 @@ export default function InteractiveAuthBackground() {
               )
             }
           />
-          {/* DRAG TO SPIN Tech Monospace Tag (from reference design) */}
+          
+          {/* Animated Walking Traveler with Mobile Phone Overlay */}
           <div
             style={{
               position: "absolute",
-              bottom: "16%",
+              bottom: "12%",
+              width: "100%",
+              height: "160px",
+              pointerEvents: "none",
+              overflow: "hidden",
+            }}
+          >
+            <svg
+              viewBox="0 0 800 160"
+              style={{ width: "100%", height: "100%" }}
+            >
+              <defs>
+                <linearGradient id="walkGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#F97316" stopOpacity="0" />
+                  <stop offset="50%" stopColor="#F97316" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#F97316" stopOpacity="0" />
+                </linearGradient>
+                <filter id="phoneLight" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+
+              {/* Path line */}
+              <path
+                d="M 50 130 Q 400 120 750 130"
+                stroke="rgba(249, 115, 22, 0.25)"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                fill="none"
+              />
+
+              {/* Animated Walking Figure with Mobile Phone */}
+              <g>
+                <animateTransform
+                  attributeName="transform"
+                  type="translate"
+                  from="-60 0"
+                  to="820 0"
+                  dur="14s"
+                  repeatCount="indefinite"
+                />
+
+                {/* Pedestrian Shadow */}
+                <ellipse cx="30" cy="132" rx="14" ry="4" fill="rgba(0,0,0,0.4)">
+                  <animate
+                    attributeName="rx"
+                    values="12;16;12"
+                    dur="0.6s"
+                    repeatCount="indefinite"
+                  />
+                </ellipse>
+
+                {/* Walking Human Silhouette */}
+                <g fill={isDark ? "#E2E8F0" : "#0F172A"} stroke={isDark ? "#E2E8F0" : "#0F172A"}>
+                  {/* Head */}
+                  <circle cx="30" cy="74" r="6" />
+
+                  {/* Body / Torso */}
+                  <path d="M 30 80 L 30 102" strokeWidth="4" strokeLinecap="round" />
+
+                  {/* Left Leg (Walking swing) */}
+                  <path d="M 30 102 L 23 118 L 19 130" strokeWidth="3.5" strokeLinecap="round">
+                    <animate
+                      attributeName="d"
+                      values="M 30 102 L 23 118 L 19 130; M 30 102 L 35 116 L 39 130; M 30 102 L 23 118 L 19 130"
+                      dur="0.7s"
+                      repeatCount="indefinite"
+                    />
+                  </path>
+
+                  {/* Right Leg (Walking swing opposite) */}
+                  <path d="M 30 102 L 37 118 L 41 130" strokeWidth="3.5" strokeLinecap="round">
+                    <animate
+                      attributeName="d"
+                      values="M 30 102 L 37 118 L 41 130; M 30 102 L 22 116 L 17 130; M 30 102 L 37 118 L 41 130"
+                      dur="0.7s"
+                      repeatCount="indefinite"
+                    />
+                  </path>
+
+                  {/* Left Arm (Holding Mobile Phone up) */}
+                  <path d="M 30 84 L 38 92 L 40 88" strokeWidth="3" strokeLinecap="round" stroke="#F97316" />
+
+                  {/* Right Arm (Natural Walking swing) */}
+                  <path d="M 30 84 L 20 95" strokeWidth="3" strokeLinecap="round">
+                    <animate
+                      attributeName="d"
+                      values="M 30 84 L 20 95; M 30 84 L 26 97; M 30 84 L 20 95"
+                      dur="0.7s"
+                      repeatCount="indefinite"
+                    />
+                  </path>
+
+                  {/* Smartphone Device in hand */}
+                  <rect
+                    x="39"
+                    y="83"
+                    width="4"
+                    height="8"
+                    rx="1"
+                    fill="#F97316"
+                    stroke="#F97316"
+                    filter="url(#phoneLight)"
+                  />
+                  {/* Phone Screen Glow Rays */}
+                  <polygon points="43,85 58,80 58,92" fill="url(#walkGlow)" />
+                </g>
+              </g>
+            </svg>
+          </div>
+
+          {/* DRAG TO SPIN Tech Monospace Tag */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: "4%",
               fontFamily: "monospace, monospace",
               fontSize: "10px",
               letterSpacing: "0.2em",
@@ -264,7 +381,7 @@ export default function InteractiveAuthBackground() {
               userSelect: "none",
             }}
           >
-            ● DRAG TO SPIN
+            ● DRAG TO SPIN &bull; ACTIVE PEDESTRIAN SHIELD
           </div>
         </div>
 

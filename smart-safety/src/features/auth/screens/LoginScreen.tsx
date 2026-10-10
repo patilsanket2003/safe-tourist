@@ -125,7 +125,7 @@ export default function LoginScreen({ navigation, route }: any) {
           showsVerticalScrollIndicator={false}
         >
           {/* Liquid Glass Card */}
-          <LiquidGlassCard maxWidth={360}>
+          <LiquidGlassCard maxWidth={330}>
             {/* Header Section */}
             <View style={styles.header}>
               <View

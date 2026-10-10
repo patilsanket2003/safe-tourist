@@ -21,11 +21,11 @@ export default function LiquidGlassCard({
           backdropFilter: 'blur(28px) saturate(200%)',
           WebkitBackdropFilter: 'blur(28px) saturate(200%)',
           boxShadow: isDark
-            ? '0 24px 48px -12px rgba(0, 0, 0, 0.85), 0 0 24px rgba(249, 115, 22, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.18), inset 0 -1px 1px rgba(0, 0, 0, 0.5)'
-            : '0 16px 32px -12px rgba(15, 23, 42, 0.1), 0 0 20px rgba(255, 255, 255, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.85), inset 0 -1px 2px rgba(0, 0, 0, 0.03)',
+            ? '0 20px 40px -10px rgba(0, 0, 0, 0.8), 0 0 20px rgba(249, 115, 22, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.15), inset 0 -1px 1px rgba(0, 0, 0, 0.4)'
+            : '0 12px 28px -10px rgba(15, 23, 42, 0.1), 0 0 16px rgba(255, 255, 255, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.8), inset 0 -1px 2px rgba(0, 0, 0, 0.03)',
           background: isDark
-            ? 'linear-gradient(135deg, rgba(20, 20, 20, 0.92) 0%, rgba(12, 12, 12, 0.95) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(244, 244, 245, 0.85) 100%)',
+            ? 'linear-gradient(135deg, rgba(14, 14, 14, 0.72) 0%, rgba(8, 8, 8, 0.78) 100%)'
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.75) 0%, rgba(244, 244, 245, 0.70) 100%)',
           border: isDark
             ? '1px solid rgba(249, 115, 22, 0.22)'
             : '1px solid rgba(228, 228, 231, 0.9)',
