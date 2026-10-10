@@ -162,9 +162,24 @@ export function off(event: 'enter' | 'exit' | 'state' | 'primary' | 'location' |
   emitter.off(event, cb)
 }
 
+export function isRedOrRestrictedZone(f: GeoFence): boolean {
+  if (!f) return false;
+  const cat = (f.category || '').toLowerCase();
+  const name = (f.name || '').toLowerCase();
+  const rl = (f.riskLevel || '').toString().toLowerCase();
+  return (
+    cat.includes('restricted') || cat.includes('no-entry') || cat.includes('red') ||
+    cat.includes('danger') || cat.includes('hazard') || cat.includes('flood') ||
+    cat.includes('lightning') || cat.includes('thunderstorm') || cat.includes('landslide') ||
+    cat.includes('wildlife') || cat.includes('protected') ||
+    name.includes('restricted') || name.includes('red') || name.includes('danger') ||
+    rl.includes('high') || rl.includes('danger') || rl.includes('red') || rl.includes('severe')
+  );
+}
+
 export async function startMonitoring(options?: { accuracy?: Location.LocationAccuracy, intervalMs?: number, distance?: number }) {
   const accuracy = options?.accuracy || Location.Accuracy.Balanced
-  const interval = options?.intervalMs || 30000
+  const interval = options?.intervalMs || 5000
   const distance = options?.distance || 0
 
   const { status } = await Location.requestForegroundPermissionsAsync()
@@ -198,7 +213,7 @@ export async function startMonitoring(options?: { accuracy?: Location.LocationAc
           // still update stability counters but skip emitting
         }
 
-        // stability/debounce: only commit when same candidate state is seen STABILITY_REQUIRED times
+        // stability/debounce: only commit when same candidate state is seen required times
         const s = stabilityCounters[f.id] || { count: 0 }
         if (s.candidate === newState) {
           s.count = (s.count || 0) + 1
@@ -208,7 +223,10 @@ export async function startMonitoring(options?: { accuracy?: Location.LocationAc
         }
         stabilityCounters[f.id] = s
 
-        if (s.count >= STABILITY_REQUIRED && s.candidate && s.candidate !== prev) {
+        const isHazard = isRedOrRestrictedZone(f);
+        const requiredStability = (isHazard && s.candidate === 'inside') ? 1 : STABILITY_REQUIRED;
+
+        if (s.count >= requiredStability && s.candidate && s.candidate !== prev) {
           // commit transition
           states[f.id] = s.candidate
           stabilityCounters[f.id] = { count: 0 }

@@ -87,9 +87,11 @@ export default function GroupStatusCard({ groupName, accessCode, memberCount, is
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#00897B', // Teal/Blueish
+    backgroundColor: '#141414',
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.3)',
     elevation: 4,
     position: 'relative',
   },
@@ -103,7 +105,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   groupName: {
-    color: 'white',
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 18,
     marginBottom: 4,
@@ -111,17 +113,19 @@ const styles = StyleSheet.create({
   codeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(249, 115, 22, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.25)',
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
   codeLabel: {
-    color: 'rgba(255,255,255,0.9)',
+    color: 'rgba(255,255,255,0.8)',
   },
   codeValue: {
-    color: 'white',
+    color: '#F97316',
     fontWeight: 'bold',
     letterSpacing: 1,
   },
@@ -132,14 +136,16 @@ const styles = StyleSheet.create({
   accessBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E0F2F1',
+    backgroundColor: 'rgba(249, 115, 22, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.3)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     gap: 4
   },
   badgeText: {
-    color: '#004D40',
+    color: '#F97316',
     fontWeight: 'bold',
     fontSize: 12,
   },

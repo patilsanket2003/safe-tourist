@@ -1,13 +1,29 @@
-import { useState } from "react";
-import { ScrollView, KeyboardAvoidingView, Platform, View, StyleSheet, TouchableOpacity } from "react-native";
-import { Button, TextInput, Text, IconButton, HelperText } from "react-native-paper";
+import React, { useState } from "react";
+import {
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput as NativeTextInput,
+} from "react-native";
+import { Text, HelperText } from "react-native-paper";
 import { useApp } from "../../../context/AppContext";
+import { useAppTheme } from "../../../context/ThemeContext";
+import { Ionicons } from "@expo/vector-icons";
+import InteractiveAuthBackground from "../../../components/InteractiveAuthBackground";
+import ThemeToggle from "../../../components/ThemeToggle";
+import LiquidGlassCard from "../../../components/LiquidGlassCard";
+import LiquidGlassButton from "../../../components/LiquidGlassButton";
 
 export default function BasicInfoScreen({ navigation, route }: any) {
   const { state, register, login, setJustRegistered } = useApp();
+  const { isDark, colors } = useAppTheme();
   const lang = state.language;
   const role = route?.params?.role as "solo" | "group-member" | "tour-admin" | undefined;
 
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -18,13 +34,19 @@ export default function BasicInfoScreen({ navigation, route }: any) {
   const onSubmit = async () => {
     setMsg(null);
 
+    // Name validation
+    if (!name.trim()) {
+      setMsg({ type: "error", text: "Please enter your full name" });
+      return;
+    }
+
     // Email validation
     if (!email.trim()) {
       setMsg({ type: "error", text: "Please enter your email" });
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(email.trim())) {
       setMsg({ type: "error", text: "Please enter a valid email address" });
       return;
     }
@@ -34,8 +56,8 @@ export default function BasicInfoScreen({ navigation, route }: any) {
       setMsg({ type: "error", text: "Please enter your phone number" });
       return;
     }
-    const phoneRegex = /^\d{10}$/;
-    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (cleanPhone.length < 10) {
       setMsg({ type: "error", text: "Please enter a valid 10-digit mobile number" });
       return;
     }
@@ -56,14 +78,14 @@ export default function BasicInfoScreen({ navigation, route }: any) {
     try {
       const res = await register({
         role: role || "solo",
-        name: "Tourist",
-        email,
+        name: name.trim(),
+        email: email.trim(),
         password,
-        govId: phone, // using phone as default ID
-        phone,
+        govId: cleanPhone,
+        phone: cleanPhone,
         dayWiseItinerary: [],
         emergencyContact: { name: "None", phone: "0000000000" },
-        language: lang,
+        language: lang || "en",
         age: "25",
         gender: "Other",
       });
@@ -74,30 +96,54 @@ export default function BasicInfoScreen({ navigation, route }: any) {
         return;
       }
 
-      const loginRes = await login(email, password);
+      const loginRes = await login(email.trim(), password);
       if (!loginRes.ok) {
         setMsg({ type: "success", text: `${res.message}. Please login manually.` });
         setLoading(false);
         return;
       }
 
-      setMsg({ type: "success", text: "Welcome!" });
+      setMsg({ type: "success", text: "Welcome! Account created successfully." });
     } catch (e: any) {
-      setMsg({ type: "error", text: e.message || "An error occurred" });
+      setMsg({ type: "error", text: e.message || "An error occurred during registration" });
     }
     setLoading(false);
   };
 
   return (
-    <View style={styles.screenContainer}>
-      <IconButton
-        icon="arrow-left"
-        size={24}
-        onPress={() => navigation.goBack()}
-        style={styles.backIcon}
-      />
+    <View style={styles.container}>
+      {/* Interactive Animated Background */}
+      <InteractiveAuthBackground />
+
+      {/* Top Bar with Back and Theme Toggle */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={[
+            styles.navIconButton,
+            Platform.OS === "web"
+              ? ({
+                  backdropFilter: "blur(16px)",
+                  boxShadow: isDark
+                    ? "0 4px 12px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.2)"
+                    : "0 4px 12px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.8)",
+                } as any)
+              : {},
+            {
+              backgroundColor: colors.toggleBg,
+              borderColor: colors.toggleBorder,
+            },
+          ]}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+        </TouchableOpacity>
+
+        <ThemeToggle />
+      </View>
+
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, zIndex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         enabled
       >
@@ -107,100 +153,254 @@ export default function BasicInfoScreen({ navigation, route }: any) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>Create account</Text>
-            {role && (
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>
-                  {role === 'solo' ? 'Solo Traveler' : role === 'group-member' ? 'Group Member' : role === 'tour-admin' ? 'Tour Admin' : role}
-                </Text>
+          {/* Liquid Glass Card */}
+          <LiquidGlassCard maxWidth={360}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View
+                style={[
+                  styles.brandIconWrapper,
+                  Platform.OS === "web"
+                    ? ({
+                        boxShadow: "0 0 15px rgba(249, 115, 22, 0.3), inset 0 1px 1px rgba(255,255,255,0.4)",
+                      } as any)
+                    : {},
+                ]}
+              >
+                <Ionicons name="person-add" size={22} color="#F97316" />
               </View>
-            )}
-            <Text style={styles.subtitle}>Enter your details to sign up</Text>
-          </View>
 
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                mode="flat"
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter email"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                cursorColor="#0C87DE"
-                selectionColor="#0C87DE"
-                style={styles.textInput}
-                underlineColor="transparent"
-                activeUnderlineColor="transparent"
-                placeholderTextColor="#9CA4AB"
-              />
+              <Text style={[styles.title, { color: colors.textPrimary }]}>
+                Create an account
+              </Text>
+
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                Join Urban Shield for real-time travel protection
+              </Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Phone Number</Text>
-              <TextInput
-                mode="flat"
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="Enter phone number"
-                keyboardType="phone-pad"
-                cursorColor="#0C87DE"
-                selectionColor="#0C87DE"
-                style={styles.textInput}
-                underlineColor="transparent"
-                activeUnderlineColor="transparent"
-                placeholderTextColor="#9CA4AB"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                mode="flat"
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter password"
-                secureTextEntry={secureTextEntry}
-                cursorColor="#0C87DE"
-                selectionColor="#0C87DE"
-                style={styles.textInput}
-                underlineColor="transparent"
-                activeUnderlineColor="transparent"
-                placeholderTextColor="#9CA4AB"
-                right={
-                  <TextInput.Icon
-                    icon={secureTextEntry ? "eye-off-outline" : "eye-outline"}
-                    color="#9CA3AF"
-                    onPress={() => setSecureTextEntry(!secureTextEntry)}
+            {/* Form */}
+            <View style={styles.formContainer}>
+              {/* Full Name */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Full Name
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={18}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
                   />
-                }
-              />
+                  <NativeTextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Enter your full name"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    autoCapitalize="words"
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+
+              {/* Email */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Email
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <NativeTextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="Enter your email"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+
+              {/* Phone Number */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Phone Number
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <NativeTextInput
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="10-digit mobile number"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    keyboardType="phone-pad"
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+
+              {/* Password */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Password
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <NativeTextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Minimum 6 characters"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    secureTextEntry={secureTextEntry}
+                    autoCapitalize="none"
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setSecureTextEntry(!secureTextEntry)}
+                    style={{ padding: 6 }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={secureTextEntry ? "eye-off-outline" : "eye-outline"}
+                      size={18}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {msg && (
+                <HelperText
+                  type={msg.type === "error" ? "error" : "info"}
+                  style={{
+                    color: msg.type === "error" ? "#ef4444" : "#10b981",
+                    fontSize: 13,
+                    textAlign: "center",
+                    marginVertical: 4,
+                  }}
+                >
+                  {msg.text}
+                </HelperText>
+              )}
+
+              {/* Liquid Glass Submit Button */}
+              <View style={{ marginTop: 6, marginBottom: 10 }}>
+                <LiquidGlassButton
+                  onPress={onSubmit}
+                  loading={loading}
+                  disabled={loading}
+                >
+                  Create Account
+                </LiquidGlassButton>
+              </View>
+
+              {/* Already have an account link */}
+              <TouchableOpacity
+                onPress={() => navigation.navigate("Login", { role })}
+                disabled={loading}
+                style={styles.actionLink}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.actionLinkText,
+                    { color: isDark ? "#94a3b8" : "#64748b" },
+                  ]}
+                >
+                  Already have an account?{" "}
+                  <Text style={{ color: "#F97316", fontWeight: "700" }}>
+                    Sign in
+                  </Text>
+                </Text>
+              </TouchableOpacity>
             </View>
-
-            {msg && (
-              <HelperText type={msg.type === "error" ? "error" : "info"} style={styles.helperText}>
-                {msg.text}
-              </HelperText>
-            )}
-
-            <Button
-              mode="contained"
-              onPress={onSubmit}
-              loading={loading}
-              disabled={loading}
-              style={styles.submitButton}
-              contentStyle={styles.submitButtonContent}
-              labelStyle={styles.submitButtonLabel}
-            >
-              Sign Up
-            </Button>
-
-            <TouchableOpacity onPress={() => navigation.navigate("Login", { role })} style={styles.signInLink}>
-              <Text style={styles.signInLinkText}>Already have account? Sign In</Text>
-            </TouchableOpacity>
-          </View>
+          </LiquidGlassCard>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -208,116 +408,95 @@ export default function BasicInfoScreen({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  screenContainer: {
+  container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    position: "relative",
   },
-  backIcon: {
+  topBar: {
     position: "absolute",
-    top: Platform.OS === "ios" ? 50 : 38,
-    left: 20,
+    top: Platform.OS === "web" ? 24 : 50,
+    left: 24,
+    right: 24,
     zIndex: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  navIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: "flex-start",
-    paddingHorizontal: 28,
-    paddingTop: 88,
-    paddingBottom: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 80,
+    paddingBottom: 40,
   },
   header: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 18,
+  },
+  brandIconWrapper: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.35)",
   },
   title: {
-    fontFamily: "Jost",
+    fontSize: 22,
     fontWeight: "700",
-    fontSize: 28,
-    lineHeight: 36,
-    letterSpacing: 0.2,
-    color: "#0F172A",
-    marginBottom: 8,
+    marginBottom: 4,
+    textAlign: "center",
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontFamily: "Jost",
-    fontWeight: "400",
-    fontSize: 14,
-    lineHeight: 20,
-    letterSpacing: 0.2,
-    color: "#6B7280",
+    fontSize: 13,
+    textAlign: "center",
   },
   formContainer: {
     width: "100%",
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   label: {
-    fontFamily: "Jost",
-    fontWeight: "600",
-    fontSize: 14,
-    lineHeight: 22,
-    letterSpacing: 0.5,
-    color: "#171725",
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: "#F6F6F6",
-    borderRadius: 12,
-    height: 52,
-    paddingLeft: 16,
-    fontSize: 14,
-  },
-  helperText: {
-    fontSize: 14,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  submitButton: {
-    borderRadius: 12,
-    backgroundColor: "#0C87DE",
-    marginTop: 16,
-  },
-  submitButtonContent: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  submitButtonLabel: {
-    fontFamily: "Plus Jakarta Sans",
-    fontWeight: "600",
-    fontSize: 15,
-    lineHeight: 24,
-    letterSpacing: 0.5,
-    color: "#FEFEFE",
-  },
-  signInLink: {
-    marginTop: 24,
-    alignItems: "center",
-  },
-  signInLinkText: {
-    fontFamily: "Jost",
-    fontWeight: "600",
-    fontSize: 16,
-    lineHeight: 24,
-    letterSpacing: 0.5,
-    color: "#2853AF",
-  },
-  roleBadge: {
-    alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: '#EEF6FF',
-    borderWidth: 1,
-    borderColor: '#D3EFFF',
-  },
-  roleBadgeText: {
-    color: '#0C87DE',
-    fontWeight: '700',
     fontSize: 12,
-    textAlign: 'center',
+    fontWeight: "600",
+    marginBottom: 4,
+    marginLeft: 2,
+  },
+  liquidInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  nativeInput: {
+    flex: 1,
+    fontSize: 15,
+    height: "100%",
+    paddingVertical: 0,
+    outlineStyle: "none" as any,
+  },
+  actionLink: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  actionLinkText: {
+    fontSize: 14,
   },
 });
-

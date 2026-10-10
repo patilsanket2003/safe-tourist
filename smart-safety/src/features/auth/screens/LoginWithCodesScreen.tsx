@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   ScrollView,
   KeyboardAvoidingView,
@@ -6,20 +6,21 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  Pressable,
+  TextInput as NativeTextInput,
 } from "react-native";
-import {
-  Button,
-  HelperText,
-  Text,
-  TextInput,
-} from "react-native-paper";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Text, HelperText } from "react-native-paper";
+import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "../../../context/AppContext";
+import { useAppTheme } from "../../../context/ThemeContext";
 import { useFocusEffect } from "@react-navigation/native";
+import InteractiveAuthBackground from "../../../components/InteractiveAuthBackground";
+import ThemeToggle from "../../../components/ThemeToggle";
+import LiquidGlassCard from "../../../components/LiquidGlassCard";
+import LiquidGlassButton from "../../../components/LiquidGlassButton";
 
 export default function LoginWithCodesScreen({ navigation }: any) {
   const { loginWithCodes } = useApp() as any;
+  const { isDark, colors } = useAppTheme();
   const [guideId, setGuideId] = useState("");
   const [touristId, setTouristId] = useState("");
   const [groupAccessCode, setGroupAccessCode] = useState("");
@@ -30,78 +31,82 @@ export default function LoginWithCodesScreen({ navigation }: any) {
   } | null>(null);
   const touristIdInputRef = useRef<any>(null);
 
-  // Auto-focus on the first input field
   useFocusEffect(
     useCallback(() => {
       const timeout = setTimeout(() => {
         touristIdInputRef.current?.focus?.();
-      }, 250);
+      }, 300);
       return () => clearTimeout(timeout);
     }, [])
   );
 
   const onSubmit = async () => {
-    // Clear previous messages
     setMsg(null);
 
-    // Validate inputs with specific messages
     if (!touristId.trim()) {
-      setMsg({
-        type: "error",
-        text: "Please enter your Tourist ID",
-      });
+      setMsg({ type: "error", text: "Please enter your Tourist ID" });
       return;
     }
 
     if (!guideId.trim()) {
-      setMsg({
-        type: "error",
-        text: "Please enter your Guide ID",
-      });
+      setMsg({ type: "error", text: "Please enter your Guide ID" });
       return;
     }
 
     if (!groupAccessCode.trim()) {
-      setMsg({
-        type: "error",
-        text: "Please enter your Group Access Code",
-      });
+      setMsg({ type: "error", text: "Please enter your Group Access Code" });
       return;
     }
 
     setLoading(true);
-
+    let res: any;
     try {
-      // Call AppContext function which handles everything
-      const result = await loginWithCodes(guideId, touristId, groupAccessCode);
-
-      if (result.ok) {
-        setMsg({
-          type: "success",
-          text: "Welcome! Logging you in...",
-        });
-        // Navigation happens automatically via RootNavigator watching state.user
-      } else {
-        setMsg({
-          type: "error",
-          text: result.message || "Login failed. Please check your codes.",
-        });
-      }
+      res = await loginWithCodes(
+        guideId.trim(),
+        touristId.trim(),
+        groupAccessCode.trim()
+      );
     } catch (e: any) {
-      console.error("LoginWithCodes error:", e);
-      setMsg({
-        type: "error",
-        text: e?.message || "Login failed. Please check your codes and try again.",
-      });
-    } finally {
-      setLoading(false);
+      res = { ok: false, message: e?.message || "An error occurred" };
     }
+    setMsg({ type: res.ok ? "success" : "error", text: res.message });
+    setLoading(false);
   };
 
   return (
-    <View style={styles.screenContainer}>
+    <View style={styles.container}>
+      {/* Interactive Animated Background */}
+      <InteractiveAuthBackground />
+
+      {/* Top Bar with Back and Theme Toggle */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={[
+            styles.navIconButton,
+            Platform.OS === "web"
+              ? ({
+                  backdropFilter: "blur(16px)",
+                  boxShadow: isDark
+                    ? "0 4px 12px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.2)"
+                    : "0 4px 12px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.8)",
+                } as any)
+              : {},
+            {
+              backgroundColor: colors.toggleBg,
+              borderColor: colors.toggleBorder,
+            },
+          ]}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+        </TouchableOpacity>
+
+        <ThemeToggle />
+      </View>
+
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, zIndex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         enabled
       >
@@ -111,114 +116,203 @@ export default function LoginWithCodesScreen({ navigation }: any) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <MaterialCommunityIcons name="arrow-left" size={20} color="#171725" />
-          </Pressable>
-
-          <View style={styles.header}>
-            <Text style={styles.title}>Welcome, Traveler!</Text>
-            <Text style={styles.subtitle}>
-              Enter your details to sync with your guide and join
-              the safety group.
-            </Text>
-          </View>
-
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Tourist ID</Text>
-              <TextInput
-                ref={touristIdInputRef}
-                mode="flat"
-                value={touristId}
-                onChangeText={setTouristId}
-                placeholder="Enter Tourist ID"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                cursorColor="#0C87DE"
-                selectionColor="#0C87DE"
-                style={styles.textInput}
-                underlineColor="transparent"
-                activeUnderlineColor="transparent"
-                placeholderTextColor="#9CA4AB"
-                disabled={loading}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Guide ID</Text>
-              <TextInput
-                mode="flat"
-                value={guideId}
-                onChangeText={setGuideId}
-                placeholder="Enter Guide ID"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                cursorColor="#0C87DE"
-                selectionColor="#0C87DE"
-                style={styles.textInput}
-                underlineColor="transparent"
-                activeUnderlineColor="transparent"
-                placeholderTextColor="#9CA4AB"
-                disabled={loading}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Group Access Code</Text>
-              <TextInput
-                mode="flat"
-                value={groupAccessCode}
-                onChangeText={setGroupAccessCode}
-                placeholder="Enter Group Access Code"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                cursorColor="#0C87DE"
-                selectionColor="#0C87DE"
-                style={styles.textInput}
-                underlineColor="transparent"
-                activeUnderlineColor="transparent"
-                placeholderTextColor="#9CA4AB"
-                disabled={loading}
-              />
-            </View>
-
-            {msg && (
-              <HelperText
-                type={msg.type === "error" ? "error" : "info"}
+          {/* Liquid Glass Card */}
+          <LiquidGlassCard maxWidth={360}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View
                 style={[
-                  styles.message,
-                  msg.type === "success" && styles.successMessage,
+                  styles.brandIconWrapper,
+                  Platform.OS === "web"
+                    ? ({
+                        boxShadow: "0 0 15px rgba(249, 115, 22, 0.3), inset 0 1px 1px rgba(255,255,255,0.4)",
+                      } as any)
+                    : {},
                 ]}
               >
-                {msg.text}
-              </HelperText>
-            )}
+                <Ionicons name="people" size={22} color="#F97316" />
+              </View>
 
-            <Button
-              mode="contained"
-              onPress={onSubmit}
-              loading={loading}
-              disabled={loading}
-              style={styles.button}
-              contentStyle={styles.buttonContent}
-              labelStyle={styles.buttonLabel}
-            >
-              {loading ? "Joining..." : "Join Tour"}
-            </Button>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>
+                Group Member Login
+              </Text>
 
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.helpLink}
-              disabled={loading}
-            >
-              <Text style={styles.helpText}>Need Help?</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                Enter the 3 access codes provided by your tour guide
+              </Text>
+            </View>
+
+            {/* Inputs */}
+            <View style={styles.formContainer}>
+              {/* Tourist ID */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Tourist ID
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="person-circle-outline"
+                    size={20}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <NativeTextInput
+                    ref={touristIdInputRef}
+                    value={touristId}
+                    onChangeText={setTouristId}
+                    placeholder="e.g. T1234"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+
+              {/* Guide ID */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Guide ID
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="compass-outline"
+                    size={20}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <NativeTextInput
+                    value={guideId}
+                    onChangeText={setGuideId}
+                    placeholder="e.g. G5678"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+
+              {/* Group Access Code */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  Group Access Code
+                </Text>
+                <View
+                  style={[
+                    styles.liquidInputWrapper,
+                    Platform.OS === "web"
+                      ? ({
+                          backdropFilter: "blur(14px)",
+                          boxShadow: isDark
+                            ? "inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)"
+                            : "inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)",
+                        } as any)
+                      : {},
+                    {
+                      backgroundColor: colors.inputBg,
+                      borderColor: colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="key-outline"
+                    size={20}
+                    color={colors.textMuted}
+                    style={{ marginRight: 10 }}
+                  />
+                  <NativeTextInput
+                    value={groupAccessCode}
+                    onChangeText={setGroupAccessCode}
+                    placeholder="Enter group access code"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    style={[styles.nativeInput, { color: colors.inputText }]}
+                    editable={!loading}
+                  />
+                </View>
+              </View>
+
+              {msg && (
+                <HelperText
+                  type={msg.type === "error" ? "error" : "info"}
+                  style={{
+                    color: msg.type === "error" ? "#ef4444" : "#10b981",
+                    fontSize: 13,
+                    textAlign: "center",
+                    marginVertical: 4,
+                  }}
+                >
+                  {msg.text}
+                </HelperText>
+              )}
+
+              {/* Liquid Glass Submit Button */}
+              <View style={{ marginTop: 6, marginBottom: 10 }}>
+                <LiquidGlassButton
+                  onPress={onSubmit}
+                  loading={loading}
+                  disabled={loading}
+                >
+                  Verify & Enter
+                </LiquidGlassButton>
+              </View>
+
+              {/* Back to regular login */}
+              <TouchableOpacity
+                onPress={() => navigation.navigate("Login")}
+                disabled={loading}
+                style={styles.actionLink}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.actionLinkText,
+                    { color: isDark ? "#94a3b8" : "#64748b" },
+                  ]}
+                >
+                  <Text style={{ color: "#F97316", fontWeight: "700" }}>
+                    Sign in with email
+                  </Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </LiquidGlassCard>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -226,110 +320,96 @@ export default function LoginWithCodesScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  screenContainer: {
+  container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    position: "relative",
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 34,
-    paddingTop: 88,
-    paddingBottom: 32,
-  },
-  backButton: {
+  topBar: {
     position: "absolute",
-    top: 67,
-    left: 20,
+    top: Platform.OS === "web" ? 24 : 50,
+    left: 24,
+    right: 24,
     zIndex: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  navIconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 80,
+    paddingBottom: 40,
   },
   header: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 18,
+  },
+  brandIconWrapper: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.35)",
   },
   title: {
-    fontFamily: "Jost",
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: "700",
-    color: "#171725",
-    marginBottom: 12,
+    marginBottom: 6,
     textAlign: "center",
-    letterSpacing: 0.5,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontFamily: "Jost",
-    fontSize: 14,
-    color: "#434E58",
+    fontSize: 13,
     textAlign: "center",
-    lineHeight: 22,
-    letterSpacing: 0.3,
-    paddingHorizontal: 20,
+    lineHeight: 18,
   },
   formContainer: {
     width: "100%",
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   label: {
-    fontFamily: "Jost",
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
-    color: "#171725",
-    marginBottom: 8,
-    letterSpacing: 0.3,
+    marginBottom: 4,
+    marginLeft: 2,
   },
-  textInput: {
-    backgroundColor: "#F6F6F6",
-    borderRadius: 12,
-    height: 56,
-    paddingLeft: 16,
-    fontSize: 15,
-  },
-  message: {
-    fontSize: 14,
-    marginTop: 8,
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  successMessage: {
-    color: "#059669",
-  },
-  button: {
-    marginTop: 24,
-    borderRadius: 12,
-    backgroundColor: "#0C87DE",
-    elevation: 3,
-    shadowColor: "#0C87DE",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-  },
-  buttonContent: {
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-  },
-  buttonLabel: {
-    fontFamily: "Plus Jakarta Sans",
-    fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    color: "#FFFFFF",
-  },
-  helpLink: {
-    marginTop: 24,
+  liquidInputWrapper: {
+    flexDirection: "row",
     alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  nativeInput: {
+    flex: 1,
+    fontSize: 15,
+    height: "100%",
+    paddingVertical: 0,
+    outlineStyle: "none" as any,
+  },
+  actionLink: {
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 8,
   },
-  helpText: {
-    fontFamily: "Jost",
-    fontSize: 16,
-    color: "#2853AF",
-    fontWeight: "600",
-    letterSpacing: 0.3,
+  actionLinkText: {
+    fontSize: 14,
   },
 });

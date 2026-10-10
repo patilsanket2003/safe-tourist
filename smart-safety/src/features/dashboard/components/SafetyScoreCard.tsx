@@ -48,7 +48,7 @@ export default function SafetyScoreCard() {
                     {/* Right side - Circular progress */}
                     <View style={styles.progressContainer}>
                         {isLoading ? (
-                            <ActivityIndicator size="large" color="#1e40af" />
+                            <ActivityIndicator size="large" color="#F97316" />
                         ) : (
                             <>
                                 <Svg width={size} height={size} style={styles.svg}>
@@ -56,7 +56,7 @@ export default function SafetyScoreCard() {
                                         cx={size / 2}
                                         cy={size / 2}
                                         r={radius}
-                                        stroke="#e5e7eb"
+                                        stroke="#27272A"
                                         strokeWidth={strokeWidth}
                                         fill="transparent"
                                     />
@@ -65,7 +65,7 @@ export default function SafetyScoreCard() {
                                         cx={size / 2}
                                         cy={size / 2}
                                         r={radius}
-                                        stroke="#1e40af"
+                                        stroke="#F97316"
                                         strokeWidth={strokeWidth}
                                         fill="transparent"
                                         strokeDasharray={`${circumference}, ${circumference}`}
@@ -93,11 +93,11 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     card: {
-        backgroundColor: '#f8fafc',
+        backgroundColor: '#141414',
         borderRadius: 16,
         padding: 20,
         borderWidth: 1,
-        borderColor: '#e5e7eb',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
     content: {
         flexDirection: 'row',
@@ -109,14 +109,14 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 14,
-        color: '#6b7280',
+        color: '#A1A1AA',
         marginBottom: 4,
         fontWeight: '500',
     },
     rating: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#1f2937',
+        color: '#FFFFFF',
         marginBottom: 8,
     },
     messageRow: {
@@ -146,6 +146,6 @@ const styles = StyleSheet.create({
     scoreText: {
         fontSize: 22,
         fontWeight: '700',
-        color: '#1e40af',
+        color: '#F97316',
     },
 })

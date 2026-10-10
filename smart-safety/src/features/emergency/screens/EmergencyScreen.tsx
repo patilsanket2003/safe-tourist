@@ -337,7 +337,7 @@ export default function EmergencyScreen({ navigation }: any) {
       }
 
       // If the current user is not an emergency vehicle/admin, show a banner
-      if (state.user?.role !== 'emergency_vehicle' && state.user?.role !== 'tour-admin') {
+      if ((state.user?.role as string) !== 'emergency_vehicle' && state.user?.role !== 'tour-admin') {
         if (currentLocation?.coords && data.location) {
           const R = 6371e3 // metres
           const φ1 = (currentLocation.coords.latitude * Math.PI) / 180
@@ -1217,20 +1217,22 @@ const styles = StyleSheet.create({
   refreshContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(20, 20, 20, 0.95)',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
     gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.4,
     shadowRadius: 4,
     elevation: 4,
   },
   refreshText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#3B82F6',
+    color: '#F97316',
   },
 })

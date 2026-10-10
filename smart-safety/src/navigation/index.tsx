@@ -68,14 +68,14 @@ function TabBarBackground() {
       style={{
         flex: 1,
         borderRadius: 32,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: "rgba(18, 18, 18, 0.94)",
         borderWidth: 1,
-        borderColor: "rgba(0, 0, 0, 0.04)",
+        borderColor: "rgba(255, 255, 255, 0.12)",
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.5,
+        shadowRadius: 24,
+        elevation: 12,
       }}
     />
   );
@@ -86,8 +86,8 @@ function MainTabs() {
   const { state } = useApp();
   const { isTracking } = usePathDeviation();
   const isTourAdmin = state.user?.role === 'tour-admin';
-  const activeColor = "#3b82f6";
-  const inactiveColor = "#9ca3af";
+  const activeColor = "#F97316";
+  const inactiveColor = "#71717A";
 
   return (
     <Tab.Navigator
@@ -309,15 +309,15 @@ function MainTabs() {
 function AuthStack() {
   const StackAuth = createNativeStackNavigator();
   return (
-    <StackAuth.Navigator>
-      <StackAuth.Screen
-        name="Onboarding"
-        component={OnboardingScreen}
-        options={{ headerShown: false }}
-      />
+    <StackAuth.Navigator initialRouteName="Login">
       <StackAuth.Screen
         name="Login"
         component={LoginScreen}
+        options={{ headerShown: false }}
+      />
+      <StackAuth.Screen
+        name="Onboarding"
+        component={OnboardingScreen}
         options={{ headerShown: false }}
       />
       <StackAuth.Screen

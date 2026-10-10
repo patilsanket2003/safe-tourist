@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Modal, TextInput, ScrollView, useWindowDimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Modal, TextInput, ScrollView, useWindowDimensions, KeyboardAvoidingView, Platform, Linking } from 'react-native';
 import { SERVER_URL } from '../../../config';
 import { useLocation } from '../../../context/LocationContext';
 import { useNavigation } from '@react-navigation/native';
@@ -13,6 +13,13 @@ interface Message {
   isEmergency?: boolean;
 }
 
+interface CallingSession {
+  type: 'police' | 'hospital';
+  title: string;
+  number: string;
+  status: string;
+}
+
 export default function DaminiAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -24,6 +31,7 @@ export default function DaminiAssistant() {
   ]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [callSession, setCallSession] = useState<CallingSession | null>(null);
   const { width, height } = useWindowDimensions();
   const { currentLocation } = useLocation();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -41,6 +49,90 @@ export default function DaminiAssistant() {
     ).start();
   }, []);
 
+  const handleCallPolice = async () => {
+    const number = '112';
+    const telUrl = `tel:${number}`;
+
+    setCallSession({
+      type: 'police',
+      title: 'POLICE DISPATCH (112)',
+      number: '112',
+      status: 'Dialing 112... Directing emergency call'
+    });
+
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      text: '🚨 Calling Police Dispatch (112)... Please stay calm, connecting your device dialer.',
+      isUser: false,
+      status: 'HIGH RISK'
+    }]);
+
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.href = telUrl;
+      } else {
+        const canOpen = await Linking.canOpenURL(telUrl);
+        if (canOpen) {
+          await Linking.openURL(telUrl);
+        } else {
+          await Linking.openURL('tel:100');
+        }
+      }
+    } catch (err) {
+      console.warn('Call Police error:', err);
+    }
+  };
+
+  const handleFindHospital = async () => {
+    const number = '108';
+    const telUrl = `tel:${number}`;
+
+    setCallSession({
+      type: 'hospital',
+      title: 'EMERGENCY MEDICAL / HOSPITAL (108)',
+      number: '108',
+      status: 'Dialing 108... Connecting medical helpline'
+    });
+
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      text: '🏥 Calling Ambulance & Medical Emergency Helpline (108). Locating nearby emergency hospitals.',
+      isUser: false,
+      status: 'CAUTION'
+    }]);
+
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.href = telUrl;
+      } else {
+        const canOpen = await Linking.canOpenURL(telUrl);
+        if (canOpen) {
+          await Linking.openURL(telUrl);
+        } else {
+          await Linking.openURL('tel:102');
+        }
+      }
+    } catch (err) {
+      console.warn('Find Hospital call error:', err);
+    }
+  };
+
+  const handleOpenHospitalMap = async () => {
+    let mapUrl = 'https://www.google.com/maps/search/hospital+near+me';
+    if (currentLocation?.coords) {
+      mapUrl = `https://www.google.com/maps/search/hospital/@${currentLocation.coords.latitude},${currentLocation.coords.longitude},14z`;
+    }
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open(mapUrl, '_blank');
+      } else {
+        await Linking.openURL(mapUrl);
+      }
+    } catch (err) {
+      console.warn('Open Hospital Map error:', err);
+    }
+  };
+
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
 
@@ -48,6 +140,8 @@ export default function DaminiAssistant() {
     setMessages(prev => [...prev, newMsg]);
     setInputText('');
     setLoading(true);
+
+    const isHelpRequest = text.toLowerCase().includes('help') || text.toLowerCase().includes('emergency') || text.toLowerCase().includes('sos');
 
     try {
       const response = await fetch(`${SERVER_URL}/api/ai/damini`, {
@@ -64,28 +158,40 @@ export default function DaminiAssistant() {
 
       const data = await response.json();
       
-      let isEmergency = false;
+      let isEmergency = isHelpRequest;
       let finalMessage = data.message;
-      if (finalMessage.includes('ACTIVATING_EMERGENCY_MODE')) {
+      if (finalMessage && finalMessage.includes('ACTIVATING_EMERGENCY_MODE')) {
         isEmergency = true;
         finalMessage = finalMessage.replace('ACTIVATING_EMERGENCY_MODE', '').trim();
-        if (!finalMessage) finalMessage = 'I am activating Emergency Mode. Please stay calm.';
+      }
+      if (!finalMessage && isHelpRequest) {
+        finalMessage = 'I am activating Emergency Mode. Please stay calm.';
       }
 
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
-        text: finalMessage,
+        text: finalMessage || 'I am here to help you stay safe.',
         isUser: false,
-        status: data.status,
-        isEmergency
+        status: data.status || (isHelpRequest ? 'HIGH RISK' : 'NORMAL'),
+        isEmergency: isEmergency || isHelpRequest
       }]);
     } catch (error) {
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        text: "I apologize, but I couldn't reach the safety servers right now.",
-        isUser: false,
-        status: 'DATA UNAVAILABLE'
-      }]);
+      if (isHelpRequest) {
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          text: 'I am activating Emergency Mode. Please stay calm.',
+          isUser: false,
+          status: 'HIGH RISK',
+          isEmergency: true
+        }]);
+      } else {
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          text: "I apologize, but I couldn't reach the safety servers right now.",
+          isUser: false,
+          status: 'DATA UNAVAILABLE'
+        }]);
+      }
     } finally {
       setLoading(false);
     }
@@ -128,6 +234,55 @@ export default function DaminiAssistant() {
               </TouchableOpacity>
             </View>
 
+            {/* Active Calling Banner Overlay */}
+            {callSession && (
+              <View style={styles.callingOverlay}>
+                <View style={styles.callingCard}>
+                  <View style={[styles.callingIconCircle, { backgroundColor: callSession.type === 'police' ? '#dc2626' : '#0284c7' }]}>
+                    <Ionicons name="call" size={22} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.callingTitle}>{callSession.title}</Text>
+                    <Text style={styles.callingStatusText}>{callSession.status}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.callingActionRow}>
+                  <TouchableOpacity
+                    style={[styles.callingBtn, { backgroundColor: '#16a34a' }]}
+                    onPress={() => {
+                      const url = `tel:${callSession.number}`;
+                      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                        window.location.href = url;
+                      } else {
+                        Linking.openURL(url);
+                      }
+                    }}
+                  >
+                    <Ionicons name="call" size={15} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.callingBtnText}>Dial {callSession.number}</Text>
+                  </TouchableOpacity>
+
+                  {callSession.type === 'hospital' && (
+                    <TouchableOpacity
+                      style={[styles.callingBtn, { backgroundColor: '#0284c7' }]}
+                      onPress={handleOpenHospitalMap}
+                    >
+                      <Ionicons name="map-outline" size={15} color="#fff" style={{ marginRight: 4 }} />
+                      <Text style={styles.callingBtnText}>Hospital Map</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.callingBtn, { backgroundColor: '#475569' }]}
+                    onPress={() => setCallSession(null)}
+                  >
+                    <Text style={styles.callingBtnText}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             {/* Chat Area */}
             <ScrollView 
               style={styles.chatArea} 
@@ -152,8 +307,12 @@ export default function DaminiAssistant() {
                     )}
                     {msg.isEmergency && (
                       <View style={styles.emergencyActions}>
-                        <TouchableOpacity style={styles.emgBtn}><Text style={styles.emgBtnText}>📞 Call Police</Text></TouchableOpacity>
-                        <TouchableOpacity style={styles.emgBtn}><Text style={styles.emgBtnText}>🏥 Find Hospital</Text></TouchableOpacity>
+                        <TouchableOpacity style={styles.emgBtn} onPress={handleCallPolice} activeOpacity={0.8}>
+                          <Text style={styles.emgBtnText}>📞 Call Police (112)</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.emgBtn, { backgroundColor: '#b91c1c' }]} onPress={handleFindHospital} activeOpacity={0.8}>
+                          <Text style={styles.emgBtnText}>🏥 Find Hospital & Call 108</Text>
+                        </TouchableOpacity>
                       </View>
                     )}
                   </View>
@@ -419,5 +578,61 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
-  }
+  },
+  callingOverlay: {
+    backgroundColor: '#0f172a',
+    marginHorizontal: 12,
+    marginVertical: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  callingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  callingIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callingTitle: {
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  callingStatusText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  callingActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  callingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  callingBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });

@@ -109,44 +109,223 @@ export async function triggerHighRiskAlert(title: string, body?: string) {
 import { Audio } from 'expo-av'
 let sirenSound: Audio.Sound | null = null;
 
+export interface SirenState {
+  isPlaying: boolean;
+  title: string;
+  body: string;
+}
+
+let activeSirenState: SirenState = {
+  isPlaying: false,
+  title: '',
+  body: '',
+};
+
+const sirenListeners = new Set<(state: SirenState) => void>();
+
+export function subscribeToSirenState(cb: (state: SirenState) => void) {
+  sirenListeners.add(cb);
+  cb(activeSirenState);
+  return () => {
+    sirenListeners.delete(cb);
+  };
+}
+
+// Global audio unlock listener for web browsers
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  const unlockAudio = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const dummy = new AudioCtx();
+        dummy.resume().then(() => {
+          setTimeout(() => dummy.close(), 100);
+        });
+      }
+    } catch (_) {}
+    window.removeEventListener('click', unlockAudio);
+    window.removeEventListener('touchstart', unlockAudio);
+  };
+  window.addEventListener('click', unlockAudio, { once: true });
+  window.addEventListener('touchstart', unlockAudio, { once: true });
+}
+
+let webAudioCtx: any = null;
+let webOsc1: any = null;
+let webOsc2: any = null;
+let webGain: any = null;
+let webModulationInterval: any = null;
+let vibrationLoopInterval: any = null;
+
+function startContinuousWebSiren() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  stopContinuousWebSiren();
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    webAudioCtx = new AudioCtx();
+    if (webAudioCtx.state === 'suspended') {
+      webAudioCtx.resume();
+    }
+
+    webOsc1 = webAudioCtx.createOscillator();
+    webOsc2 = webAudioCtx.createOscillator();
+    webGain = webAudioCtx.createGain();
+
+    webOsc1.type = 'sawtooth';
+    webOsc2.type = 'square';
+
+    webGain.gain.setValueAtTime(0.4, webAudioCtx.currentTime);
+
+    // Initial frequency
+    webOsc1.frequency.setValueAtTime(650, webAudioCtx.currentTime);
+    webOsc2.frequency.setValueAtTime(700, webAudioCtx.currentTime);
+
+    webOsc1.connect(webGain);
+    webOsc2.connect(webGain);
+    webGain.connect(webAudioCtx.destination);
+
+    webOsc1.start();
+    webOsc2.start();
+
+    // Continuous wailing loop
+    let goingUp = true;
+    webModulationInterval = setInterval(() => {
+      if (!webAudioCtx || !webOsc1 || !webOsc2) return;
+      const t = webAudioCtx.currentTime;
+      if (goingUp) {
+        webOsc1.frequency.linearRampToValueAtTime(1050, t + 0.35);
+        webOsc2.frequency.linearRampToValueAtTime(1120, t + 0.35);
+      } else {
+        webOsc1.frequency.linearRampToValueAtTime(650, t + 0.35);
+        webOsc2.frequency.linearRampToValueAtTime(700, t + 0.35);
+      }
+      goingUp = !goingUp;
+    }, 400);
+  } catch (err) {
+    console.warn('[AlertHelpers] startContinuousWebSiren error:', err);
+  }
+}
+
+function stopContinuousWebSiren() {
+  if (webModulationInterval) {
+    clearInterval(webModulationInterval);
+    webModulationInterval = null;
+  }
+  if (webOsc1) {
+    try { webOsc1.stop(); webOsc1.disconnect(); } catch (_) {}
+    webOsc1 = null;
+  }
+  if (webOsc2) {
+    try { webOsc2.stop(); webOsc2.disconnect(); } catch (_) {}
+    webOsc2 = null;
+  }
+  if (webGain) {
+    try { webGain.disconnect(); } catch (_) {}
+    webGain = null;
+  }
+  if (webAudioCtx) {
+    try { webAudioCtx.close(); } catch (_) {}
+    webAudioCtx = null;
+  }
+}
+
+function startContinuousVibration() {
+  stopContinuousVibration();
+  const triggerVibe = () => {
+    if (Platform.OS === 'android' || Platform.OS === 'ios') {
+      Vibration.vibrate([0, 800, 200, 800]);
+    } else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate([800, 200, 800]);
+      } catch (_) {}
+    }
+  };
+
+  triggerVibe();
+  vibrationLoopInterval = setInterval(triggerVibe, 2200);
+}
+
+function stopContinuousVibration() {
+  if (vibrationLoopInterval) {
+    clearInterval(vibrationLoopInterval);
+    vibrationLoopInterval = null;
+  }
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    Vibration.cancel();
+  } else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(0);
+    } catch (_) {}
+  }
+}
+
+export async function stopSirenAlert() {
+  stopContinuousWebSiren();
+  stopContinuousVibration();
+  if (sirenSound) {
+    try {
+      await sirenSound.stopAsync();
+      await sirenSound.unloadAsync();
+    } catch (_) {}
+    sirenSound = null;
+  }
+
+  activeSirenState = {
+    isPlaying: false,
+    title: '',
+    body: '',
+  };
+  sirenListeners.forEach((cb) => {
+    try { cb(activeSirenState); } catch (_) {}
+  });
+}
+
 export async function triggerSirenAlert(title: string, body?: string) {
   try {
     const cfg = await getAlertConfig();
     if (!cfg.emergency) return;
+
+    activeSirenState = {
+      isPlaying: true,
+      title: title || '⚠️ DANGER / RESTRICTED ZONE DETECTED',
+      body: body || 'You are inside a restricted or danger zone. Please proceed to safety.',
+    };
+    sirenListeners.forEach((cb) => {
+      try { cb(activeSirenState); } catch (_) {}
+    });
     
-    // Vibrate for 4 seconds
-    if (cfg.vibration && (Platform.OS === 'android' || Platform.OS === 'ios')) {
-      Vibration.vibrate([0, 1000, 200, 1000, 200, 1000, 200, 400]); // approx 4 seconds
+    // Continuous vibration until turned off
+    if (cfg.vibration) {
+      startContinuousVibration();
     }
     
+    // Continuous siren sound until turned off
+    if (cfg.sound) {
+      if (Platform.OS === 'web') {
+        startContinuousWebSiren();
+      } else {
+        try {
+          if (sirenSound) {
+            await sirenSound.unloadAsync();
+          }
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_248fa73b43.mp3?filename=siren-alert-96052.mp3' },
+            { shouldPlay: true, isLooping: true, volume: 1.0 }
+          );
+          sirenSound = sound;
+        } catch (audioErr) {
+          console.warn('[AlertHelpers] Native Audio.Sound failed:', audioErr);
+        }
+      }
+    }
+
     const ok = await ensureNotificationPermission();
     if (ok) {
       await scheduleNotification({
         content: { title, body: body || '', sound: cfg.sound },
         trigger: null,
       });
-    }
-
-    // Attempt to play a siren sound using expo-av
-    if (cfg.sound) {
-      if (sirenSound) {
-        await sirenSound.unloadAsync();
-      }
-      // Load a loud siren from a public sound repository or fallback to beep
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_248fa73b43.mp3?filename=siren-alert-96052.mp3' },
-        { shouldPlay: true, isLooping: true }
-      );
-      sirenSound = sound;
-      
-      // Stop the siren exactly after 4 seconds
-      setTimeout(async () => {
-        if (sirenSound) {
-          await sirenSound.stopAsync();
-          await sirenSound.unloadAsync();
-          sirenSound = null;
-        }
-      }, 4000);
     }
   } catch (e) {
     console.warn('triggerSirenAlert failed', e);

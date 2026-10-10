@@ -21,12 +21,12 @@ export default function SafetyScore() {
   // Badge and color based on score
   const getScoreInfo = (score: number) => {
     if (score >= 80)
-      return { label: "EXCELLENT", color: "#4CAF7A", bgColor: "#D1F0E4" };
+      return { label: "EXCELLENT", color: "#10B981", bgColor: "rgba(16, 185, 129, 0.18)" };
     if (score >= 60)
-      return { label: "GOOD", color: "#5B8BD4", bgColor: "#D4EBFC" };
+      return { label: "GOOD", color: "#F97316", bgColor: "rgba(249, 115, 22, 0.18)" };
     if (score >= 40)
-      return { label: "MODERATE", color: "#E0A54B", bgColor: "#FCECD4" };
-    return { label: "LOW", color: "#D66A6A", bgColor: "#FADED9" };
+      return { label: "MODERATE", color: "#F59E0B", bgColor: "rgba(245, 158, 11, 0.18)" };
+    return { label: "LOW", color: "#EF4444", bgColor: "rgba(239, 68, 68, 0.18)" };
   };
 
   const scoreInfo = getScoreInfo(displayScore);
@@ -59,7 +59,7 @@ export default function SafetyScore() {
               <MaterialCommunityIcons
                 name="shield-check"
                 size={24}
-                color="#3B82F6"
+                color="#F97316"
               />
             </View>
             <Text style={styles.title}>Safety Score</Text>
@@ -115,9 +115,11 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
+    backgroundColor: "#141414",
+    borderRadius: 24,
     padding: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   headerRow: {
     flexDirection: "row",
@@ -133,7 +135,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#EBF5FF",
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.3)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -141,7 +145,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#1F2937",
+    color: "#FFFFFF",
   },
   badge: {
     paddingHorizontal: 14,
@@ -161,19 +165,19 @@ const styles = StyleSheet.create({
   scoreNumber: {
     fontSize: 48,
     fontWeight: "800",
-    color: "#1F2937",
+    color: "#FFFFFF",
     lineHeight: 52,
   },
   scoreMax: {
     fontSize: 20,
     fontWeight: "500",
-    color: "#9CA3AF",
+    color: "#71717A",
     marginLeft: 4,
   },
   description: {
     fontSize: 15,
     fontWeight: "500",
-    color: "#6B7280",
+    color: "#A1A1AA",
     marginBottom: 18,
     lineHeight: 22,
   },
@@ -182,7 +186,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     height: 12,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "#27272A",
     borderRadius: 6,
     overflow: "hidden",
   },
@@ -192,7 +196,7 @@ const styles = StyleSheet.create({
   },
   lastUpdate: {
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#71717A",
     marginTop: 4,
     fontWeight: "500",
   },

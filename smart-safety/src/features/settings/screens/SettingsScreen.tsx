@@ -159,14 +159,14 @@ export default function SettingsScreen() {
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{state.user?.name?.charAt(0) || "U"}</Text>
+                <Text style={styles.avatarText}>{((state.user as any)?.name || (state.user as any)?.fullName || "U").charAt(0).toUpperCase()}</Text>
               </View>
               <View style={styles.verifiedBadge}>
                 <CheckCircle2 size={14} color="#fff" />
               </View>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{state.user?.name || "User"}</Text>
+              <Text style={styles.profileName}>{(state.user as any)?.name || (state.user as any)?.fullName || "User"}</Text>
               <Text style={styles.profileEmail}>{state.user?.email || "user@example.com"}</Text>
             </View>
           </View>
@@ -205,7 +205,7 @@ export default function SettingsScreen() {
                       <Switch
                         value={item.value}
                         onValueChange={item.onToggle}
-                        color="#3B82F6"
+                        color="#F97316"
                       />
                     </View>
                   ) : (
@@ -309,7 +309,7 @@ export default function SettingsScreen() {
                 <Text style={styles.modalSubtitle}>Secure identity pass</Text>
               </View>
               <TouchableOpacity onPress={() => setShowQR(false)} style={styles.modalCloseIconButton}>
-                <X size={24} color="#1f2937" />
+                <X size={24} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
@@ -337,7 +337,7 @@ export default function SettingsScreen() {
               mode="contained"
               onPress={() => setShowQR(false)}
               style={styles.primaryButton}
-              buttonColor="#3B82F6"
+              buttonColor="#F97316"
             >
               Close
             </Button>
@@ -351,7 +351,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF8F5',
+    backgroundColor: '#0A0A0A',
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -359,10 +359,12 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   profileCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#141414',
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   profileHeader: {
     flexDirection: 'row',
@@ -377,7 +379,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#F97316',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -397,7 +399,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: '#141414',
   },
   profileInfo: {
     flex: 1,
@@ -405,18 +407,18 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#FFFFFF',
     marginBottom: 4,
   },
   profileEmail: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#A1A1AA',
   },
   profileActions: {
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: '#27272A',
     paddingTop: 16,
   },
   actionButton: {
@@ -429,12 +431,12 @@ const styles = StyleSheet.create({
   actionDivider: {
     width: 1,
     height: 20,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#27272A',
   },
   actionButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3B82F6',
+    color: '#F97316',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -443,13 +445,15 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#141414',
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 2,
   },
@@ -464,12 +468,12 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#FFFFFF',
     marginBottom: 2,
   },
   statLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#A1A1AA',
   },
   section: {
     marginBottom: 20,
@@ -477,19 +481,21 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#A1A1AA',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
     marginLeft: 4,
   },
   sectionCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#141414',
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 2,
   },
@@ -516,16 +522,16 @@ const styles = StyleSheet.create({
   menuItemText: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#1F2937',
+    color: '#FFFFFF',
   },
   menuItemSubtext: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#71717A',
     marginTop: 2,
   },
   menuDivider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#27272A',
     marginLeft: 64,
   },
   footer: {
@@ -541,7 +547,9 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   logoutText: {
     fontSize: 15,
@@ -554,30 +562,32 @@ const styles = StyleSheet.create({
   deleteText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#9CA3AF',
+    color: '#71717A',
   },
   versionText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#71717A',
     marginTop: 8,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.72)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#141414',
     borderRadius: 28,
     padding: 24,
     alignItems: 'center',
     width: '100%',
     maxWidth: 340,
-    shadowColor: '#111827',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.5,
     shadowRadius: 24,
     elevation: 16,
   },
@@ -585,7 +595,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 5,
     borderRadius: 999,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#27272A',
     marginBottom: 16,
   },
   modalHeader: {
@@ -598,19 +608,19 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#FFFFFF',
   },
   modalSubtitle: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#6B7280',
+    color: '#A1A1AA',
     marginTop: 2,
   },
   modalCloseIconButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#27272A',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -624,18 +634,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#3B82F6',
+    borderColor: '#27272A',
+    shadowColor: '#F97316',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.2,
     shadowRadius: 18,
     elevation: 8,
   },
   idChip: {
     width: '100%',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#1C1C1E',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#27272A',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -644,7 +654,7 @@ const styles = StyleSheet.create({
   idChipLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#64748B',
+    color: '#A1A1AA',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 2,
@@ -652,12 +662,12 @@ const styles = StyleSheet.create({
   qrTouristId: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1F2937',
+    color: '#FFFFFF',
     letterSpacing: 0.2,
   },
   qrDescription: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#A1A1AA',
     textAlign: 'center',
     marginBottom: 18,
     lineHeight: 20,

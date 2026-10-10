@@ -16,6 +16,7 @@ import { showToast } from "../utils/toast";
 import {
   triggerHighRiskAlert,
   triggerSirenAlert,
+  stopSirenAlert,
   startProgressiveAlert,
   stopProgressiveAlert,
   acknowledgeHighRisk as ackHighRisk,
@@ -86,6 +87,13 @@ type User = {
       description?: string;
     }>;
   }>;
+  dob?: string;
+  dateOfBirth?: string;
+  nationality?: string;
+  gender?: "Male" | "Female" | "Other";
+  bloodGroup?: string;
+  medicalConditions?: string;
+  allergies?: string;
   emergencyContact: { name: string; phone: string };
   language: string;
   safetyScore: number;
@@ -493,6 +501,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // frequent re-renders and UI jitter, especially on lower-end devices).
   useEffect(() => {
     if (!hydrated) return;
+    // ⛔ Do NOT start geofence / siren monitoring until user is logged in
+    if (!state.token || !state.user) return;
     let mounted = true;
 
     (async () => {
@@ -500,8 +510,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Pass userId to loadFences to fetch user's personal itinerary geofences
         const userId = state.user?.touristId;
         await geofenceService.loadFences(undefined, undefined, userId);
-        // start geofence monitoring; transitions will be logged on enter/exit
-        await geofenceService.startMonitoring({ intervalMs: 30000 });
+        // start geofence monitoring with 5-second interval for real-time safety response
+        await geofenceService.startMonitoring({ intervalMs: 5000 });
 
         // Start itinerary deviation monitoring if user has itinerary
         if (state.user?.dayWiseItinerary && state.user.dayWiseItinerary.length > 0) {
@@ -560,26 +570,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             const category = (fence.category || "").toLowerCase();
             const name = (fence.name || "").toLowerCase();
 
-            // Check if it's a restricted or natural hazard zone that needs the siren
-            const needsSiren = 
+            // Check if it's a red zone, restricted area, or hazard zone that needs immediate siren & vibration
+            const isRedOrRestricted = 
               category.includes('lightning') || category.includes('thunderstorm') ||
               category.includes('flood') || 
               category.includes('hilly') || category.includes('steep terrain') ||
               category.includes('landslide') || 
               category.includes('forest fire') || 
               category.includes('restricted') || category.includes('no-entry') ||
-              category.includes('wildlife') || category.includes('protected');
+              category.includes('wildlife') || category.includes('protected') ||
+              category.includes('danger') || category.includes('red') || category.includes('hazard') ||
+              name.includes('restricted') || name.includes('red') || name.includes('danger') || name.includes('hazard') ||
+              rl.includes('high') || rl.includes('danger') || rl.includes('red') || rl.includes('severe');
 
-            if (needsSiren) {
+            if (isRedOrRestricted) {
               try {
                 triggerSirenAlert(
-                  `⚠️ RESTRICTED ZONE: ${fence.name}`,
-                  `Be alert and drive carefully, you are near or entering this kind of region: ${category || 'restricted zone'}`
+                  `🚨 RESTRICTED / RED ZONE: ${fence.name}`,
+                  `WARNING: You entered a restricted or dangerous red zone (${fence.category || 'Red Zone'}). Emergency siren and 3-second vibration activated!`
                 );
               } catch (e) {
                 /* ignore */
               }
-            } else if (rl.includes("high")) {
+            } else if (rl.includes("high") || rl.includes("medium")) {
               // Start progressive alert escalation for sustained presence
               try {
                 startProgressiveAlert(
@@ -612,20 +625,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         geofenceService.on("approaching", ({ fence, location }) => {
           try {
+            const rl = (fence.riskLevel || "").toString().toLowerCase();
             const category = (fence.category || "").toLowerCase();
-            const needsSiren = 
+            const name = (fence.name || "").toLowerCase();
+            const isRedOrRestricted = 
               category.includes('lightning') || category.includes('thunderstorm') ||
               category.includes('flood') || 
               category.includes('hilly') || category.includes('steep terrain') ||
               category.includes('landslide') || 
               category.includes('forest fire') || 
               category.includes('restricted') || category.includes('no-entry') ||
-              category.includes('wildlife') || category.includes('protected');
+              category.includes('wildlife') || category.includes('protected') ||
+              category.includes('danger') || category.includes('red') || category.includes('hazard') ||
+              name.includes('restricted') || name.includes('red') || name.includes('danger') || name.includes('hazard') ||
+              rl.includes('high') || rl.includes('danger') || rl.includes('red');
 
-            if (needsSiren) {
+            if (isRedOrRestricted) {
               triggerSirenAlert(
-                `⚠️ APPROACHING RESTRICTED ZONE`,
-                `Be alert and drive carefully, you are approaching a ${category || 'restricted'} region: ${fence.name}`
+                `⚠️ APPROACHING RED / RESTRICTED ZONE`,
+                `Caution: You are approaching a dangerous or restricted region: ${fence.name} (${fence.category || 'Red Zone'})`
               );
             }
           } catch (e) {
@@ -738,7 +756,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (syncInterval) clearInterval(syncInterval);
       } catch (e) {}
     };
-  }, [hydrated]);
+  }, [hydrated, state.token]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -894,7 +912,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Listen for real-time safety score updates and connect socket
   useEffect(() => {
     // Only subscribe if we have a logged-in user with an ID
-    const userId = state.user?.touristId || state.user?._id || state.user?.vehicleId;
+    const userAny = state.user as any;
+    const userId = userAny?.touristId || userAny?._id || userAny?.vehicleId;
     if (!hydrated || !userId) return;
 
     console.log(
@@ -904,9 +923,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // Connect the socket service!
     touristSocketService.connect(
-      state.user.touristId || state.user._id || state.user.vehicleId || "T001", 
+      userAny.touristId || userAny._id || userAny.vehicleId || "T001", 
       { lat: 0, lng: 0 }, 
-      state.user.role || "tourist"
+      userAny.role || "tourist"
     );
 
     // Subscribe to globally forwarded safety score updates
@@ -937,7 +956,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.log("[AppContext] Cleaning up safety score listener");
       if (unsubscribe) unsubscribe();
     };
-  }, [hydrated, state.user?.touristId, state.user?.vehicleId, state.user?._id, state.user?.role]);
+  }, [hydrated, (state.user as any)?.touristId, (state.user as any)?.vehicleId, (state.user as any)?._id, state.user?.role]);
 
   // Day change detection: refresh geofences when the day changes (for itinerary geofences)
   useEffect(() => {
@@ -1305,6 +1324,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       },
       async logout() {
+        // Stop any active siren and geofence monitoring before clearing state
+        try { stopSirenAlert(); } catch (e) {}
+        try { geofenceService.stopMonitoring(); } catch (e) {}
         touristSocketService.disconnect();
         await remove(STORAGE_KEY);
         setState(defaultState);
@@ -1314,7 +1336,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...s,
           user: s.user ? { ...s.user, ...patch } : null,
         }));
-        // In real app: call backend to update profile
+        try {
+          if (state.token) {
+            const res = await getTouristData(state.token, "PATCH", patch);
+            if (res) {
+              const updated = res.user || res;
+              setState((s) => ({
+                ...s,
+                user: s.user ? { ...s.user, ...updated } : updated,
+              }));
+            }
+          }
+        } catch (err) {
+          console.error("Failed to update profile on backend:", err);
+          throw err;
+        }
       },
       addContact(c) {
         setState((s) => ({

@@ -235,7 +235,7 @@ export async function startTouristBackgroundTrackingAsync(touristId: string) {
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
-      notificationTitle: "Smart Safety is tracking location",
+      notificationTitle: "Urban Shield is tracking location",
       notificationBody: "Location tracking is active for safety alerts.",
     },
   });

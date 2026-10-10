@@ -14,6 +14,9 @@ import React from "react"
 import { configureNotificationHandler } from "./src/utils/notificationsCompat"
 import { requestNotificationPermission } from "./src/utils/notificationPermissions"
 import DaminiAssistant from "./src/features/ai/components/DaminiAssistant"
+import EmergencySirenModal from "./src/components/EmergencySirenModal"
+
+import { ThemeProvider } from "./src/context/ThemeContext"
 
 // Ensure background tasks are defined at startup.
 import "./src/services/backgroundLocation";
@@ -24,9 +27,14 @@ configureNotificationHandler()
 
 const navTheme = {
   ...NavDefaultTheme,
+  dark: true,
   colors: {
     ...NavDefaultTheme.colors,
-    background: "#FFFFFF",
+    background: "#0A0A0A",
+    card: "#121212",
+    text: "#FFFFFF",
+    border: "rgba(255, 255, 255, 0.1)",
+    primary: "#F97316",
   },
 }
 
@@ -129,18 +137,21 @@ function AppContent() {
 
   return (
     <AppProvider>
-      <LocationProvider>
-        <PathDeviationProvider>
-          <PaperProvider theme={paperTheme}>
-            <ToastListener />
-            <NavigationContainer theme={navTheme}>
-              <StatusBar style="auto" />
-              <RootNavigator />
-              <DaminiAssistant />
-            </NavigationContainer>
-          </PaperProvider>
-        </PathDeviationProvider>
-      </LocationProvider>
+      <ThemeProvider>
+        <LocationProvider>
+          <PathDeviationProvider>
+            <PaperProvider theme={paperTheme}>
+              <ToastListener />
+              <EmergencySirenModal />
+              <NavigationContainer theme={navTheme}>
+                <StatusBar style="auto" />
+                <RootNavigator />
+                <DaminiAssistant />
+              </NavigationContainer>
+            </PaperProvider>
+          </PathDeviationProvider>
+        </LocationProvider>
+      </ThemeProvider>
     </AppProvider>
   )
 }

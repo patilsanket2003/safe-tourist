@@ -136,15 +136,32 @@ export default function DashboardScreen({ navigation }: any) {
   };
 
   const getUserName = () => {
-    if (state.user?.name) {
-      return state.user.name.split(" ")[0];
+    // Check multiple possible name fields returned by the API
+    const user = state.user as any;
+    const rawName =
+      user?.name ||
+      user?.fullName ||
+      (user?.firstName && user?.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : user?.firstName) ||
+      null;
+    if (rawName && rawName.trim()) {
+      return rawName.trim().split(" ")[0];
     }
     return "Explorer";
   };
 
   const getUserInitials = () => {
-    if (state.user?.name) {
-      const names = state.user.name.split(" ");
+    const user = state.user as any;
+    const rawName =
+      user?.name ||
+      user?.fullName ||
+      (user?.firstName && user?.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : user?.firstName) ||
+      null;
+    if (rawName && rawName.trim()) {
+      const names = rawName.trim().split(" ");
       if (names.length >= 2) {
         return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
       }
@@ -162,7 +179,12 @@ export default function DashboardScreen({ navigation }: any) {
       "#8B5CF6",
       "#EC4899",
     ];
-    const name = state.user?.name || "Explorer";
+    const user = state.user as any;
+    const name =
+      user?.name ||
+      user?.fullName ||
+      (user?.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : null) ||
+      "Explorer";
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -889,7 +911,7 @@ export default function DashboardScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: "#FAF8F5",
+    backgroundColor: "#0A0A0A",
   },
   container: {
     paddingHorizontal: 16,
@@ -921,14 +943,14 @@ const styles = StyleSheet.create({
   },
   greetingText: {
     fontSize: 13,
-    color: "#6B7280",
+    color: "#A1A1AA",
     fontWeight: "500",
     marginBottom: 1,
   },
   userName: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#1F2937",
+    color: "#FFFFFF",
     marginBottom: 4,
   },
   locationRow: {
@@ -938,7 +960,7 @@ const styles = StyleSheet.create({
   },
   location: {
     fontSize: 13,
-    color: "#6B7280",
+    color: "#A1A1AA",
     fontWeight: "500",
     flex: 1,
   },
@@ -955,7 +977,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
-    color: "#6B7280",
+    color: "#A1A1AA",
     fontWeight: "500",
   },
   sosSection: {
@@ -987,15 +1009,17 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#141414",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: "80%",
     paddingBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   modalHeader: {
     flexDirection: "row",
@@ -1003,11 +1027,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#27272A",
   },
   modalTitle: {
     fontWeight: "700",
-    color: "#1F2937",
+    color: "#FFFFFF",
   },
   modalScroll: {
     paddingHorizontal: 20,
@@ -1021,12 +1045,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#6B7280",
+    color: "#A1A1AA",
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 14,
-    color: "#9CA3AF",
+    color: "#71717A",
     marginTop: 8,
   },
   markAllReadButton: {
@@ -1037,7 +1061,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   markAllReadText: {
-    color: "#3B82F6",
+    color: "#F97316",
     fontWeight: "600",
     fontSize: 14,
   },

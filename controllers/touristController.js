@@ -1,10 +1,10 @@
 const Tourist = require("../models/Tourist.js");
 const { CustomError } = require('../middlewares/errorMiddleware');
-const { decrypt } = require("../utils/encrypt.js");
+const { encrypt, decrypt } = require("../utils/encrypt.js");
 
 
 // @desc    Get the authenticated tourist's profile
-// @route   GET /api/tourist/profile
+// @route   GET /api/tourist/me
 // @access  Private (tourist)
 
 exports.getTouristById = async (req, res, next) => {
@@ -19,29 +19,6 @@ exports.getTouristById = async (req, res, next) => {
       return res.status(404).json({ error: "Tourist not found" });
     }
 
-    // console.log("Tourist found:", tourist);
-
-    // let decryptedItinerary = null;
-
-    // if (tourist.dayWiseItineraryEncrypted && tourist.dayWiseItineraryEncrypted.length > 0) {
-    //   try {
-    //     // console.log("Encrypted itinerary array:", tourist.dayWiseItineraryEncrypted);
-
-    //     decryptedItinerary = tourist.dayWiseItineraryEncrypted.map(item => {
-    //       const decryptedString = decrypt(item);
-    //       console.log("Decrypted itinerary string:", decryptedString);
-    //       return JSON.parse(decryptedString);
-    //     });
-
-    //     // console.log("Decrypted itinerary object:", decryptedItinerary);
-
-    //   } catch (error) {
-    //     console.error("Error decrypting itinerary:", error);
-    //   }
-    // } else {
-    //   console.log("dayWiseItineraryEncrypted field is null or missing");
-    // }
-
     const safeData = {
       touristId: tourist.touristId,
       name: tourist.nameEncrypted ? decrypt(tourist.nameEncrypted) : null,
@@ -50,6 +27,12 @@ exports.getTouristById = async (req, res, next) => {
       role: tourist.role, // IMPORTANT: Include role for frontend authorization
       groupId: tourist.groupId || null, // Include groupId for group members
       dayWiseItinerary: tourist.dayWiseItinerary, // updated field name
+      dob: tourist.dob,
+      nationality: tourist.nationality,
+      gender: tourist.gender,
+      bloodGroup: tourist.bloodGroup,
+      medicalConditions: tourist.medicalConditions,
+      allergies: tourist.allergies,
       emergencyContact: tourist.emergencyContactEncrypted
         ? JSON.parse(decrypt(tourist.emergencyContactEncrypted))
         : null,
@@ -65,6 +48,93 @@ exports.getTouristById = async (req, res, next) => {
 
   } catch (err) {
     console.error("getTouristById error:", err);
+    next(err);
+  }
+};
+
+// @desc    Update tourist profile (Personal, Medical, Contact info)
+// @route   PATCH /api/tourist/me
+// @access  Private (tourist)
+exports.updateTouristProfile = async (req, res, next) => {
+  try {
+    const touristId = req.user.touristId;
+    const tourist = await Tourist.findOne({ touristId });
+    if (!tourist) {
+      return res.status(404).json({ error: "Tourist not found" });
+    }
+
+    const {
+      name,
+      phone,
+      dob,
+      nationality,
+      gender,
+      bloodGroup,
+      medicalConditions,
+      allergies,
+      language,
+      emergencyContact
+    } = req.body;
+
+    if (name) {
+      tourist.nameEncrypted = encrypt(name.trim());
+    }
+    if (phone) {
+      tourist.phoneEncrypted = encrypt(phone.trim());
+    }
+    if (dob !== undefined) {
+      tourist.dob = dob ? new Date(dob) : null;
+    }
+    if (nationality !== undefined) {
+      tourist.nationality = nationality;
+    }
+    if (gender !== undefined) {
+      tourist.gender = gender;
+    }
+    if (bloodGroup !== undefined) {
+      tourist.bloodGroup = bloodGroup;
+    }
+    if (medicalConditions !== undefined) {
+      tourist.medicalConditions = medicalConditions;
+    }
+    if (allergies !== undefined) {
+      tourist.allergies = allergies;
+    }
+    if (language !== undefined) {
+      tourist.language = language;
+    }
+    if (emergencyContact) {
+      tourist.emergencyContactEncrypted = encrypt(JSON.stringify(emergencyContact));
+    }
+
+    await tourist.save();
+
+    const safeData = {
+      touristId: tourist.touristId,
+      name: tourist.nameEncrypted ? decrypt(tourist.nameEncrypted) : null,
+      phone: tourist.phoneEncrypted ? decrypt(tourist.phoneEncrypted) : null,
+      email: tourist.email,
+      role: tourist.role,
+      groupId: tourist.groupId || null,
+      dayWiseItinerary: tourist.dayWiseItinerary,
+      dob: tourist.dob,
+      nationality: tourist.nationality,
+      gender: tourist.gender,
+      bloodGroup: tourist.bloodGroup,
+      medicalConditions: tourist.medicalConditions,
+      allergies: tourist.allergies,
+      emergencyContact: tourist.emergencyContactEncrypted
+        ? JSON.parse(decrypt(tourist.emergencyContactEncrypted))
+        : null,
+      language: tourist.language,
+      createdAt: tourist.createdAt,
+      expiresAt: tourist.expiresAt,
+      audit: tourist.audit
+    };
+
+    return res.status(200).json(safeData);
+  } catch (err) {
+    console.error("updateTouristProfile error:", err);
     next(err);
   }
 };

@@ -1,5 +1,14 @@
-import React, { useState, useRef } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, TextInput, Keyboard } from 'react-native';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import {
+    View,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    TextInput,
+    Keyboard,
+    ActivityIndicator,
+    Alert,
+} from 'react-native';
 import { Text, Menu } from 'react-native-paper';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,26 +17,114 @@ import { useApp } from '../../../context/AppContext';
 const BLOOD_GROUPS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
 
 export default function PersonalInfoScreen() {
-    const navigation = useNavigation();
-    const { state } = useApp();
+    const navigation = useNavigation<any>();
+    const { state, updateProfile } = useApp();
+    const user = (state.user || {}) as any;
 
-    // Personal Info
-    const [fullName, setFullName] = useState(state.user?.name || 'Arjun Sharma');
-    const [dob, setDob] = useState('08/15/1995');
-    const [nationality, setNationality] = useState('Indian');
-    const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>('Male');
+    // Personal Info — pre-fill from authenticated user data
+    const [fullName, setFullName] = useState(user.name || user.fullName || '');
+    const [dob, setDob] = useState(
+        user.dob
+            ? typeof user.dob === 'string' && user.dob.includes('T')
+                ? user.dob.split('T')[0]
+                : String(user.dob)
+            : user.dateOfBirth || ''
+    );
+    const [nationality, setNationality] = useState(user.nationality || 'Indian');
+    const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>(user.gender || 'Male');
 
     // Verification
-    const email = state.user?.email || 'arjun.sharma@example.com';
-    const phone = state.user?.phone || '+91 98765 43210';
-
+    const email = user.email || '';
+    const phone = user.phone || '';
 
     // Emergency Info
-    const [bloodGroup, setBloodGroup] = useState('O+');
+    const [bloodGroup, setBloodGroup] = useState(user.bloodGroup || 'O+');
     const [bloodMenuVisible, setBloodMenuVisible] = useState(false);
     const isBloodMenuDismissed = useRef(false);
-    const [medicalConditions, setMedicalConditions] = useState('None');
-    const [allergies, setAllergies] = useState('Peanuts');
+    const [medicalConditions, setMedicalConditions] = useState(user.medicalConditions || 'None');
+    const [allergies, setAllergies] = useState(user.allergies || 'None');
+
+    // Save state
+    const [saving, setSaving] = useState(false);
+    const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Sync with state.user updates
+    useEffect(() => {
+        if (state.user) {
+            const u = state.user as any;
+            if (u.name || u.fullName) setFullName(u.name || u.fullName);
+            if (u.dob || u.dateOfBirth) {
+                setDob(
+                    u.dob
+                        ? typeof u.dob === 'string' && u.dob.includes('T')
+                            ? u.dob.split('T')[0]
+                            : String(u.dob)
+                        : u.dateOfBirth
+                );
+            }
+            if (u.nationality) setNationality(u.nationality);
+            if (u.gender) setGender(u.gender);
+            if (u.bloodGroup) setBloodGroup(u.bloodGroup);
+            if (u.medicalConditions !== undefined) setMedicalConditions(u.medicalConditions);
+            if (u.allergies !== undefined) setAllergies(u.allergies);
+        }
+    }, [state.user]);
+
+    const handleSave = async () => {
+        if (!fullName.trim()) {
+            Alert.alert('Validation Error', 'Please enter your full name.');
+            return;
+        }
+
+        setSaving(true);
+        setStatusMessage(null);
+        try {
+            await updateProfile({
+                name: fullName.trim(),
+                dob: dob.trim(),
+                nationality: nationality.trim(),
+                gender,
+                bloodGroup,
+                medicalConditions: medicalConditions.trim(),
+                allergies: allergies.trim(),
+            });
+
+            setStatusMessage({ type: 'success', text: 'Profile saved successfully!' });
+            Alert.alert('Success', 'Profile saved successfully!');
+            setTimeout(() => {
+                navigation.goBack();
+            }, 800);
+        } catch (error: any) {
+            const msg = error?.message || 'Failed to update profile. Please try again.';
+            setStatusMessage({ type: 'error', text: msg });
+            Alert.alert('Error', msg);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // Header Save Button
+    useLayoutEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={handleSave}
+                    disabled={saving}
+                    style={styles.headerSaveButton}
+                    activeOpacity={0.7}
+                >
+                    {saving ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                        <>
+                            <Ionicons name="checkmark-sharp" size={16} color="#fff" style={{ marginRight: 4 }} />
+                            <Text style={styles.headerSaveButtonText}>Save</Text>
+                        </>
+                    )}
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation, fullName, dob, nationality, gender, bloodGroup, medicalConditions, allergies, saving]);
 
     const openBloodMenu = () => {
         if (isBloodMenuDismissed.current) {
@@ -63,6 +160,34 @@ export default function PersonalInfoScreen() {
                 contentContainerStyle={styles.content}
                 showsVerticalScrollIndicator={false}
             >
+                {/* Status Banner */}
+                {statusMessage && (
+                    <View
+                        style={[
+                            styles.statusBanner,
+                            statusMessage.type === 'success'
+                                ? styles.statusSuccess
+                                : styles.statusError,
+                        ]}
+                    >
+                        <Ionicons
+                            name={statusMessage.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
+                            size={18}
+                            color={statusMessage.type === 'success' ? '#059669' : '#dc2626'}
+                        />
+                        <Text
+                            style={[
+                                styles.statusText,
+                                statusMessage.type === 'success'
+                                    ? styles.statusTextSuccess
+                                    : styles.statusTextError,
+                            ]}
+                        >
+                            {statusMessage.text}
+                        </Text>
+                    </View>
+                )}
+
                 {/* Personal Information */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
@@ -76,6 +201,7 @@ export default function PersonalInfoScreen() {
                         value={fullName}
                         onChangeText={setFullName}
                         placeholder="Enter full name"
+                        placeholderTextColor="#9ca3af"
                     />
 
                     <View style={styles.row}>
@@ -86,7 +212,8 @@ export default function PersonalInfoScreen() {
                                     style={[styles.input, { flex: 1, marginBottom: 0 }]}
                                     value={dob}
                                     onChangeText={setDob}
-                                    placeholder="MM/DD/YYYY"
+                                    placeholder="YYYY-MM-DD"
+                                    placeholderTextColor="#9ca3af"
                                 />
                                 <Ionicons name="calendar-outline" size={18} color="#9ca3af" style={styles.inputIcon} />
                             </View>
@@ -97,6 +224,8 @@ export default function PersonalInfoScreen() {
                                 style={styles.input}
                                 value={nationality}
                                 onChangeText={setNationality}
+                                placeholder="Nationality"
+                                placeholderTextColor="#9ca3af"
                             />
                         </View>
                     </View>
@@ -118,7 +247,7 @@ export default function PersonalInfoScreen() {
 
                     <Text style={styles.label}>Email Address</Text>
                     <View style={styles.verifiedField}>
-                        <Text style={styles.verifiedText}>{email}</Text>
+                        <Text style={styles.verifiedText}>{email || 'Not provided'}</Text>
                         <View style={styles.verifiedBadge}>
                             <Ionicons name="checkmark-circle" size={14} color="#10b981" />
                             <Text style={styles.verifiedBadgeText}>Verified</Text>
@@ -127,15 +256,12 @@ export default function PersonalInfoScreen() {
 
                     <Text style={styles.label}>Phone Number</Text>
                     <View style={styles.verifiedField}>
-                        <Text style={styles.verifiedText}>{phone}</Text>
+                        <Text style={styles.verifiedText}>{phone || 'Not provided'}</Text>
                         <View style={styles.verifiedBadge}>
                             <Ionicons name="checkmark-circle" size={14} color="#10b981" />
                             <Text style={styles.verifiedBadgeText}>Verified</Text>
                         </View>
                     </View>
-                    <TouchableOpacity activeOpacity={0.7}>
-                        <Text style={styles.reVerifyLink}>Re-verify</Text>
-                    </TouchableOpacity>
                 </View>
 
                 {/* Emergency Info */}
@@ -144,7 +270,7 @@ export default function PersonalInfoScreen() {
                         <View style={styles.emergencyIconContainer}>
                             <MaterialCommunityIcons name="medical-bag" size={22} color="#fff" />
                         </View>
-                        <Text style={styles.emergencyTitle}>Emergency Info</Text>
+                        <Text style={styles.emergencyTitle}>Emergency & Medical Info</Text>
                     </View>
 
                     <View style={styles.emergencyContent}>
@@ -191,7 +317,7 @@ export default function PersonalInfoScreen() {
                                     style={styles.emergencyInput}
                                     value={medicalConditions}
                                     onChangeText={setMedicalConditions}
-                                    placeholder="None"
+                                    placeholder="None or list conditions"
                                     placeholderTextColor="#9ca3af"
                                 />
                             </View>
@@ -205,13 +331,30 @@ export default function PersonalInfoScreen() {
                                     style={styles.emergencyInput}
                                     value={allergies}
                                     onChangeText={setAllergies}
-                                    placeholder="None"
+                                    placeholder="None or list allergies"
                                     placeholderTextColor="#9ca3af"
                                 />
                             </View>
                         </View>
                     </View>
                 </View>
+
+                {/* Bottom Save Button */}
+                <TouchableOpacity
+                    style={[styles.bottomSaveButton, saving && styles.bottomSaveButtonDisabled]}
+                    onPress={handleSave}
+                    disabled={saving}
+                    activeOpacity={0.8}
+                >
+                    {saving ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                        <View style={styles.saveButtonContent}>
+                            <Ionicons name="save-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                            <Text style={styles.bottomSaveButtonText}>Save Changes</Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
 
                 <View style={{ height: 40 }} />
             </ScrollView>
@@ -229,6 +372,49 @@ const styles = StyleSheet.create({
     },
     content: {
         padding: 16,
+    },
+    headerSaveButton: {
+        marginRight: 16,
+        backgroundColor: '#3b82f6',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    headerSaveButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    statusBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 10,
+        marginBottom: 16,
+        gap: 8,
+    },
+    statusSuccess: {
+        backgroundColor: '#d1fae5',
+        borderWidth: 1,
+        borderColor: '#a7f3d0',
+    },
+    statusError: {
+        backgroundColor: '#fee2e2',
+        borderWidth: 1,
+        borderColor: '#fca5a5',
+    },
+    statusText: {
+        fontSize: 14,
+        fontWeight: '500',
+        flex: 1,
+    },
+    statusTextSuccess: {
+        color: '#065f46',
+    },
+    statusTextError: {
+        color: '#991b1b',
     },
     section: {
         backgroundColor: '#fff',
@@ -432,31 +618,34 @@ const styles = StyleSheet.create({
         color: '#10b981',
         fontWeight: '600',
     },
-    reVerifyLink: {
-        fontSize: 13,
-        color: '#3b82f6',
-        fontWeight: '600',
-        textAlign: 'right',
-    },
-    dropdown: {
-        backgroundColor: '#fff',
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#e5e7eb',
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-    },
-    dropdownText: {
-        fontSize: 14,
-        color: '#1f2937',
-    },
     menuContent: {
         backgroundColor: '#fff',
         borderRadius: 10,
-        maxHeight: 200, // Limit height to prevent cutting off
+        maxHeight: 200,
+    },
+    bottomSaveButton: {
+        backgroundColor: '#2563eb',
+        borderRadius: 12,
+        paddingVertical: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 8,
+        shadowColor: '#2563eb',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    bottomSaveButtonDisabled: {
+        backgroundColor: '#93c5fd',
+    },
+    saveButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    bottomSaveButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
     },
 });

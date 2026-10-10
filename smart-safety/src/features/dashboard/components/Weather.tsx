@@ -106,15 +106,17 @@ export default Weather
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
+    backgroundColor: '#141414',
+    borderRadius: 24,
     paddingVertical: 18,
     paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#FFFFFF',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -134,14 +136,14 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#FFFFFF',
     marginTop: 8,
     marginBottom: 4,
     textAlign: 'center',
   },
   label: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#A1A1AA',
     fontWeight: '600',
     textAlign: 'center',
   },

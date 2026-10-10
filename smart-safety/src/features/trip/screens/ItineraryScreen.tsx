@@ -87,7 +87,7 @@ export default function ItineraryScreen({ navigation }: any) {
   // Always render Solo/Itinerary View
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       {/* Header Section */}
       <View style={styles.headerSection}>
@@ -112,7 +112,7 @@ export default function ItineraryScreen({ navigation }: any) {
               <MaterialCommunityIcons
                 name={filter.icon as any}
                 size={16}
-                color={activeFilter === filter.key ? "#FFFFFF" : "#64748B"}
+                color={activeFilter === filter.key ? "#FFFFFF" : "#A1A1AA"}
               />
               <Text
                 style={[
@@ -201,13 +201,13 @@ export default function ItineraryScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#0A0A0A",
   },
   headerSection: {
     paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 16,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#0A0A0A",
   },
   titleRow: {
     flexDirection: "row",
@@ -218,24 +218,26 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 14,
     fontWeight: "500",
-    color: "#94A3B8",
+    color: "#A1A1AA",
     marginBottom: 4,
     letterSpacing: 0.5,
   },
   pageTitle: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1E293B",
+    color: "#FFFFFF",
     letterSpacing: -0.5,
   },
   filterContainer: {
     flexDirection: "row",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#141414",
     borderRadius: 16,
     padding: 6,
-    shadowColor: "#64748B",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 2,
   },
@@ -250,8 +252,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   filterPillActive: {
-    backgroundColor: "#3B82F6",
-    shadowColor: "#3B82F6",
+    backgroundColor: "#F97316",
+    shadowColor: "#F97316",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -260,13 +262,14 @@ const styles = StyleSheet.create({
   filterText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#64748B",
+    color: "#A1A1AA",
   },
   filterTextActive: {
     color: "#FFFFFF",
   },
   listContainer: {
     flex: 1,
+    backgroundColor: "#0A0A0A",
   },
  fab: {
     position: "absolute",

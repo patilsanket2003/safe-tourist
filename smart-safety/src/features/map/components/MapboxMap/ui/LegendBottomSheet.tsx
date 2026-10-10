@@ -71,21 +71,6 @@ export default function LegendBottomSheet({
 
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* Statistics Grid */}
-            <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{dangerZoneCount}</Text>
-                <Text style={styles.statLabel}>Danger Zones</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{riskGridCount}</Text>
-                <Text style={styles.statLabel}>Risk Grids</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{geofenceCount}</Text>
-                <Text style={styles.statLabel}>Geofences</Text>
-              </View>
-            </View>
 
             {/* Zone Types Section */}
             <View style={styles.section}>

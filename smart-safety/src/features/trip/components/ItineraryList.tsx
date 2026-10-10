@@ -692,14 +692,14 @@ const ItineraryList = forwardRef<{ openNew: () => void }, ItineraryListProps>(
             {/* Premium Illustration Area */}
             <View style={styles.emptyIllustration}>
               <LinearGradient
-                colors={["#EEF2FF", "#E0E7FF"]}
+                colors={["rgba(249, 115, 22, 0.2)", "rgba(249, 115, 22, 0.05)"]}
                 style={styles.emptyIconOuter}
               >
                 <View style={styles.emptyIconInner}>
                   <MaterialCommunityIcons
                     name="airplane"
                     size={48}
-                    color="#6366F1"
+                    color="#F97316"
                   />
                 </View>
               </LinearGradient>
@@ -725,7 +725,7 @@ const ItineraryList = forwardRef<{ openNew: () => void }, ItineraryListProps>(
                 <Text style={styles.emptyFeatureText}>Safety Alerts</Text>
               </View>
               <View style={styles.emptyFeaturePill}>
-                <MaterialCommunityIcons name="calendar-check" size={14} color="#3B82F6" />
+                <MaterialCommunityIcons name="calendar-check" size={14} color="#F97316" />
                 <Text style={styles.emptyFeatureText}>Trip Tracking</Text>
               </View>
             </View>
@@ -1008,14 +1008,62 @@ const ItineraryList = forwardRef<{ openNew: () => void }, ItineraryListProps>(
           </Modal>
         </Portal>
 
-        {showDatePicker && (
+        {showDatePicker && Platform.OS !== "web" && (
           <DateTimePicker
-            value={new Date()} // Default to today, or parse existing date if valid
+            value={pickerMode === "start" && date ? new Date(date) : pickerMode === "end" && endDate ? new Date(endDate) : new Date()}
             mode="date"
             display={Platform.OS === "ios" ? "inline" : "default"}
             onChange={handleDateChange}
-            minimumDate={new Date()} // Optional constraint
+            minimumDate={new Date()}
           />
+        )}
+
+        {/* Web-compatible date picker modal */}
+        {showDatePicker && Platform.OS === "web" && (
+          <Portal>
+            <Modal
+              visible={showDatePicker}
+              onDismiss={() => setShowDatePicker(false)}
+              contentContainerStyle={styles.datePickerModalContainer}
+            >
+              <View style={styles.datePickerModalHeader}>
+                <Text style={styles.datePickerModalTitle}>
+                  {pickerMode === "start" ? "Select Travel Date" : "Select End Date"}
+                </Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <MaterialCommunityIcons name="close" size={22} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.datePickerWebContainer}>
+                {/* Inline date selector */}
+                {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].map((offset) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + offset);
+                  const label = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+                  const isSelected = pickerMode === "start" ? date === d.toISOString().split("T")[0] : endDate === d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }).replace(/\//g, "/");
+                  return (
+                    <TouchableOpacity
+                      key={offset}
+                      style={[styles.datePickerWebRow, isSelected && styles.datePickerWebRowSelected]}
+                      onPress={() => {
+                        handleDateChange({} as any, d);
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name="calendar-blank"
+                        size={18}
+                        color={isSelected ? "#fff" : "#3B82F6"}
+                      />
+                      <Text style={[styles.datePickerWebRowText, isSelected && styles.datePickerWebRowTextSelected]}>
+                        {label}
+                      </Text>
+                      {isSelected && <MaterialCommunityIcons name="check" size={18} color="#fff" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </Modal>
+          </Portal>
         )}
 
         {/* Day-wise Itinerary Edit Modal */}
@@ -1052,13 +1100,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   card: {
-    backgroundColor: "white",
+    backgroundColor: "#141414",
     borderRadius: 20,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
     elevation: 4,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
   },
   imageContainer: {
@@ -1128,7 +1178,7 @@ const styles = StyleSheet.create({
   progressSection: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: "#27272A",
   },
   progressHeader: {
     flexDirection: "row",
@@ -1139,18 +1189,18 @@ const styles = StyleSheet.create({
   progressLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#9CA3AF",
+    color: "#71717A",
     letterSpacing: 0.5,
   },
   daysLeft: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#3B82F6",
+    color: "#F97316",
   },
   progressText: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#1F2937",
+    color: "#FFFFFF",
     marginBottom: 10,
   },
   // Card Actions
@@ -1166,11 +1216,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#27272A",
     gap: 8,
   },
   editButtonText: {
-    color: "#374151",
+    color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "600",
   },
@@ -1181,11 +1231,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.25)",
     gap: 8,
   },
   extendButtonText: {
-    color: "#3B82F6",
+    color: "#F97316",
     fontSize: 15,
     fontWeight: "600",
   },
@@ -1196,20 +1248,21 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1.5,
-    borderColor: "#BFDBFE",
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.3)",
     gap: 8,
     marginTop: 12,
   },
   viewItineraryButtonText: {
-    color: "#3B82F6",
+    color: "#F97316",
     fontSize: 15,
     fontWeight: "600",
   },
   // Empty state styles
   emptyContainer: {
     flex: 1,
+    backgroundColor: "#0A0A0A",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 32,
@@ -1230,19 +1283,21 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#18181B",
+    borderWidth: 1,
+    borderColor: "rgba(249, 115, 22, 0.3)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#6366F1",
+    shadowColor: "#F97316",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.25,
     shadowRadius: 24,
     elevation: 8,
   },
   emptyDot: {
     position: "absolute",
     borderRadius: 50,
-    backgroundColor: "#C7D2FE",
+    backgroundColor: "rgba(249, 115, 22, 0.5)",
   },
   emptyDot1: {
     width: 12,
@@ -1265,14 +1320,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#1E293B",
+    color: "#FFFFFF",
     marginBottom: 12,
     textAlign: "center",
     letterSpacing: -0.5,
   },
   emptySubtitle: {
     fontSize: 15,
-    color: "#64748B",
+    color: "#A1A1AA",
     textAlign: "center",
     lineHeight: 24,
     marginBottom: 24,
@@ -1285,7 +1340,9 @@ const styles = StyleSheet.create({
   emptyFeaturePill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#18181B",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
@@ -1294,7 +1351,7 @@ const styles = StyleSheet.create({
   emptyFeatureText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#475569",
+    color: "#E4E4E7",
   },
   emptyAddButton: {
     borderRadius: 16,
@@ -1686,5 +1743,54 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "bold",
     color: "#6B7280",
+  },
+  // Web date picker styles
+  datePickerModalContainer: {
+    backgroundColor: "#141414",
+    marginHorizontal: 24,
+    marginVertical: 60,
+    borderRadius: 20,
+    maxHeight: "80%",
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  datePickerModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  datePickerModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  datePickerWebContainer: {
+    maxHeight: 400,
+  },
+  datePickerWebRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 6,
+    backgroundColor: "rgba(59,130,246,0.08)",
+    gap: 12,
+  },
+  datePickerWebRowSelected: {
+    backgroundColor: "#3B82F6",
+  },
+  datePickerWebRowText: {
+    flex: 1,
+    fontSize: 15,
+    color: "#E5E7EB",
+    fontWeight: "500",
+  },
+  datePickerWebRowTextSelected: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
 });

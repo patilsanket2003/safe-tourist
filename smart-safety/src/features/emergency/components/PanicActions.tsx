@@ -665,12 +665,14 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContainer: {
-    backgroundColor: "white",
+    backgroundColor: "#141414",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     minHeight: 500,
     padding: 24,
     paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   modalContent: {
     flex: 1,
@@ -678,12 +680,12 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#1F2937",
+    color: "#FFFFFF",
     marginBottom: 4,
   },
   modalSubtitle: {
     fontSize: 14,
-    color: "#6B7280",
+    color: "#A1A1AA",
     marginBottom: 20,
   },
 
@@ -728,7 +730,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#374151",
+    color: "#FFFFFF",
     marginBottom: 12,
   },
 
@@ -740,14 +742,16 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     width: "48%",
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#1C1C1F",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 1,
     height: 100,
@@ -755,7 +759,7 @@ const styles = StyleSheet.create({
   categoryLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
+    color: "#FFFFFF",
   },
   cancelButton: {
     marginTop: 0,

@@ -1,12 +1,26 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { TextInput, Button, Text, Surface } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+    View,
+    StyleSheet,
+    TouchableOpacity,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    TextInput as NativeTextInput,
+} from 'react-native';
+import { Text } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../context/AppContext';
+import { useAppTheme } from '../../../context/ThemeContext';
+import InteractiveAuthBackground from '../../../components/InteractiveAuthBackground';
+import ThemeToggle from '../../../components/ThemeToggle';
+import LiquidGlassCard from '../../../components/LiquidGlassCard';
+import LiquidGlassButton from '../../../components/LiquidGlassButton';
 
 export default function EmergencyLoginScreen({ navigation }: any) {
-    const { state, loginEmergency } = useApp();
+    const { loginEmergency } = useApp();
+    const { isDark, colors } = useAppTheme();
     const [vehicleId, setVehicleId] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -16,20 +30,13 @@ export default function EmergencyLoginScreen({ navigation }: any) {
             return;
         }
 
-        console.log("EmergencyLoginScreen: Attempting login for", vehicleId);
         setLoading(true);
         try {
             const result = await loginEmergency(vehicleId.trim());
-            console.log("EmergencyLoginScreen: Login result:", result);
-            if (result.success) {
-                console.log("EmergencyLoginScreen: Login successful, waiting for navigation...");
-                // Wait for Context to update and reroute automatically, or we can navigate
-            } else {
-                console.error("EmergencyLoginScreen: Login failed:", result.message);
+            if (!result.success) {
                 Alert.alert('Login Failed', result.message || 'Invalid Vehicle ID or not approved by Admin');
             }
         } catch (error: any) {
-            console.error("EmergencyLoginScreen: Login error:", error);
             Alert.alert('Error', error.message || 'An error occurred during login');
         } finally {
             setLoading(false);
@@ -37,103 +44,235 @@ export default function EmergencyLoginScreen({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.content}
-            >
-                <TouchableOpacity 
-                    style={styles.backButton}
+        <View style={styles.container}>
+            {/* Interactive Animated Background */}
+            <InteractiveAuthBackground />
+
+            {/* Top Bar with Back and Theme Toggle */}
+            <View style={styles.topBar}>
+                <TouchableOpacity
+                    style={[
+                        styles.navIconButton,
+                        Platform.OS === 'web'
+                            ? ({
+                                    backdropFilter: 'blur(16px)',
+                                    boxShadow: isDark
+                                        ? '0 4px 12px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.2)'
+                                        : '0 4px 12px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.8)',
+                              } as any)
+                            : {},
+                        {
+                            backgroundColor: colors.toggleBg,
+                            borderColor: colors.toggleBorder,
+                        },
+                    ]}
                     onPress={() => navigation.goBack()}
+                    activeOpacity={0.7}
                 >
-                    <Ionicons name="arrow-back" size={24} color="#1f2937" />
+                    <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
                 </TouchableOpacity>
 
-                <View style={styles.header}>
-                    <View style={styles.iconContainer}>
-                        <Ionicons name="medical" size={40} color="#dc2626" />
-                    </View>
-                    <Text style={styles.title}>Emergency Vehicle</Text>
-                    <Text style={styles.subtitle}>Enter your assigned vehicle ID to continue</Text>
-                </View>
+                <ThemeToggle />
+            </View>
 
-                <Surface style={styles.formCard} elevation={2}>
-                    <TextInput
-                        label="Vehicle ID (e.g. ambulance-101)"
-                        value={vehicleId}
-                        onChangeText={setVehicleId}
-                        mode="outlined"
-                        autoCapitalize="none"
-                        style={styles.input}
-                        left={<TextInput.Icon icon="car" />}
-                    />
+            <KeyboardAvoidingView
+                style={{ flex: 1, zIndex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                enabled
+            >
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    {/* Liquid Glass Card */}
+                    <LiquidGlassCard maxWidth={360}>
+                        {/* Header */}
+                        <View style={styles.header}>
+                            <View
+                                style={[
+                                    styles.iconContainer,
+                                    Platform.OS === 'web'
+                                        ? ({
+                                                boxShadow: '0 0 16px rgba(239, 68, 68, 0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                                          } as any)
+                                        : {},
+                                ]}
+                            >
+                                <Ionicons name="medical" size={26} color="#dc2626" />
+                            </View>
+                            <Text style={[styles.title, { color: colors.textPrimary }]}>
+                                Emergency Vehicle
+                            </Text>
+                            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                                Enter your assigned vehicle ID to connect as a First Responder
+                            </Text>
+                        </View>
 
-                    <Button
-                        mode="contained"
-                        onPress={handleLogin}
-                        loading={loading}
-                        disabled={loading || !vehicleId}
-                        style={styles.loginButton}
-                        contentStyle={styles.buttonContent}
-                    >
-                        Login as Responder
-                    </Button>
-                </Surface>
+                        {/* Input Field */}
+                        <View style={styles.inputGroup}>
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>
+                                Vehicle ID
+                            </Text>
+                            <View
+                                style={[
+                                    styles.liquidInputWrapper,
+                                    Platform.OS === 'web'
+                                        ? ({
+                                                backdropFilter: 'blur(14px)',
+                                                boxShadow: isDark
+                                                    ? 'inset 0 1px 3px rgba(0, 0, 0, 0.5), inset 0 0 1px rgba(255, 255, 255, 0.1)'
+                                                    : 'inset 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 1px rgba(255, 255, 255, 0.8)',
+                                          } as any)
+                                        : {},
+                                    {
+                                        backgroundColor: colors.inputBg,
+                                        borderColor: colors.inputBorder,
+                                    },
+                                ]}
+                            >
+                                <Ionicons
+                                    name="car-outline"
+                                    size={20}
+                                    color="#ef4444"
+                                    style={{ marginRight: 10 }}
+                                />
+                                <NativeTextInput
+                                    value={vehicleId}
+                                    onChangeText={setVehicleId}
+                                    placeholder="e.g. ambulance-101, police-04"
+                                    placeholderTextColor={colors.inputPlaceholder}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    style={[styles.nativeInput, { color: colors.inputText }]}
+                                    editable={!loading}
+                                />
+                            </View>
+                        </View>
+
+                        {/* Liquid Glass Responder Button */}
+                        <View style={{ marginTop: 4, marginBottom: 12 }}>
+                            <LiquidGlassButton
+                                onPress={handleLogin}
+                                loading={loading}
+                                disabled={loading || !vehicleId.trim()}
+                                variant="destructive"
+                            >
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Ionicons name="shield" size={18} color="#fff" style={{ marginRight: 8 }} />
+                                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                                        Login as Responder
+                                    </Text>
+                                </View>
+                            </LiquidGlassButton>
+                        </View>
+
+                        {/* Back to tourist login link */}
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate('Login')}
+                            style={styles.backLink}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[styles.backLinkText, { color: isDark ? '#94a3b8' : '#64748b' }]}>
+                                Return to{' '}
+                                <Text style={{ color: '#F97316', fontWeight: '700' }}>Tourist Login</Text>
+                            </Text>
+                        </TouchableOpacity>
+                    </LiquidGlassCard>
+                </ScrollView>
             </KeyboardAvoidingView>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f3f4f6',
+        position: 'relative',
     },
-    content: {
-        flex: 1,
-        padding: 24,
+    topBar: {
+        position: 'absolute',
+        top: Platform.OS === 'web' ? 24 : 50,
+        left: 24,
+        right: 24,
+        zIndex: 10,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
-    backButton: {
-        marginBottom: 20,
+    navIconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
+    scrollContent: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingTop: 80,
+        paddingBottom: 40,
     },
     header: {
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: 18,
     },
     iconContainer: {
-        width: 80,
-        height: 80,
-        backgroundColor: '#fee2e2',
-        borderRadius: 40,
-        justifyContent: 'center',
+        width: 46,
+        height: 46,
+        borderRadius: 16,
+        backgroundColor: 'rgba(239, 68, 68, 0.15)',
         alignItems: 'center',
-        marginBottom: 16,
+        justifyContent: 'center',
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(239, 68, 68, 0.35)',
     },
     title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: '#1f2937',
-        marginBottom: 8,
+        fontSize: 22,
+        fontWeight: '700',
+        marginBottom: 6,
+        textAlign: 'center',
+        letterSpacing: -0.5,
     },
     subtitle: {
-        fontSize: 16,
-        color: '#6b7280',
+        fontSize: 13,
         textAlign: 'center',
+        lineHeight: 18,
     },
-    formCard: {
-        padding: 20,
-        borderRadius: 16,
-        backgroundColor: 'white',
+    inputGroup: {
+        marginBottom: 14,
     },
-    input: {
-        marginBottom: 24,
-        backgroundColor: 'white',
+    label: {
+        fontSize: 13,
+        fontWeight: '600',
+        marginBottom: 8,
+        marginLeft: 2,
     },
-    loginButton: {
-        borderRadius: 8,
-        backgroundColor: '#dc2626',
+    liquidInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 14,
+        borderWidth: 1,
+        paddingHorizontal: 12,
+        height: 44,
     },
-    buttonContent: {
-        height: 48,
+    nativeInput: {
+        flex: 1,
+        fontSize: 15,
+        height: '100%',
+        paddingVertical: 0,
+        outlineStyle: 'none' as any,
+    },
+    backLink: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 6,
+    },
+    backLinkText: {
+        fontSize: 14,
     },
 });

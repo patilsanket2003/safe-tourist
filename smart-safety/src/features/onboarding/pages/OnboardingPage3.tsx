@@ -162,7 +162,7 @@ export default function OnboardingPage3({
     <View style={styles.container}>
       <Animated.View style={[styles.textBlock, headerStyle]}>
         <Text style={styles.title}>Who are you?</Text>
-        <Text style={styles.subtitle}>Select the profile that best describes how you'll use Smart Safety.</Text>
+        <Text style={styles.subtitle}>Select the profile that best describes how you'll use Urban Shield.</Text>
       </Animated.View>
 
       <View style={styles.cardList}>
