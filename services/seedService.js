@@ -17,16 +17,16 @@ async function seedInitialData() {
     if (authorityCount === 0) {
       console.log('🌱 Seeding default Authority Admin user...');
       const admin = new Authority({
-        username: 'admin',
-        fullName: 'Command Center Admin',
-        email: 'admin@safetrail.com',
-        password: 'admin123', // Will be hashed by pre-save hook
+        username: 'damini',
+        fullName: 'Damini Command Center Admin',
+        email: 'damini2004@gmail.com',
+        password: 'damini@2004', // Will be hashed by pre-save hook
         role: 'System Administrator',
         authorityId: 'AUTH-HQ-01',
         isActive: true
       });
       await admin.save();
-      console.log('✅ Default Authority created: admin@safetrail.com / admin123');
+      console.log('✅ Default Authority created: damini2004@gmail.com / damini@2004');
     }
 
     // 3. Ensure a demonstration tourist exists
