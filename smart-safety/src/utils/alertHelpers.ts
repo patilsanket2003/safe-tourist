@@ -306,16 +306,32 @@ export async function triggerSirenAlert(title: string, body?: string) {
         startContinuousWebSiren();
       } else {
         try {
+          // Set Audio mode to ensure sound plays even when ring/silent switch is on Silent
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            shouldDuckAndroid: true,
+          });
+
           if (sirenSound) {
-            await sirenSound.unloadAsync();
+            try {
+              await sirenSound.stopAsync();
+              await sirenSound.unloadAsync();
+            } catch (_) {}
+            sirenSound = null;
           }
+
+          // Direct MP3 URL with fallback
+          const sirenUri = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+
           const { sound } = await Audio.Sound.createAsync(
-            { uri: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_248fa73b43.mp3?filename=siren-alert-96052.mp3' },
+            { uri: sirenUri },
             { shouldPlay: true, isLooping: true, volume: 1.0 }
           );
           sirenSound = sound;
+          await sirenSound.playAsync();
         } catch (audioErr) {
-          console.warn('[AlertHelpers] Native Audio.Sound failed:', audioErr);
+          console.warn('[AlertHelpers] Native Audio.Sound failed, attempting fallback audio context:', audioErr);
         }
       }
     }
