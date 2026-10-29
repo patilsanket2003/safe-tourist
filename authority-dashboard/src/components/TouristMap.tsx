@@ -70,34 +70,32 @@ const EFFECTIVE_TOKEN =
     ? MAPBOX_TOKEN
     : "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA";
 
-const CARTO_RASTER_STYLE = {
+const OSM_RASTER_STYLE = {
   version: 8 as const,
   sources: {
-    "carto-raster-tiles": {
+    "osm-tiles": {
       type: "raster" as const,
       tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
       ],
       tileSize: 256,
+      maxzoom: 19,
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     },
   },
   layers: [
     {
-      id: "carto-raster-layer",
+      id: "osm-raster-layer",
       type: "raster" as const,
-      source: "carto-raster-tiles",
+      source: "osm-tiles",
       minzoom: 0,
-      maxzoom: 20,
+      maxzoom: 19,
     },
   ],
 };
 
-const DEFAULT_MAP_STYLE = CARTO_RASTER_STYLE;
+const DEFAULT_MAP_STYLE = OSM_RASTER_STYLE;
 
 const getCircleCoordinates = (
   lat: number,
@@ -226,6 +224,31 @@ const TouristMap: React.FC = () => {
   const [isMapReady, setIsMapReady] = useState(false);
 
   const onMapLoad = useCallback(() => {
+    const map = mapRef.current?.getMap?.();
+    if (map) {
+      // In MapLibre v6 with react-map-gl, camera updates without tr throw Cannot read properties of undefined (reading 'center')
+      const origCameraUpdate = (map as any).transformCameraUpdate;
+      if (typeof origCameraUpdate === "function") {
+        (map as any).transformCameraUpdate = (tr: any) => {
+          if (!tr || !tr.center) {
+            const center = map.getCenter() || { lng: 72.9691, lat: 19.2714 };
+            tr = {
+              center,
+              zoom: map.getZoom() || 13,
+              bearing: map.getBearing() || 0,
+              pitch: map.getPitch() || 0,
+              elevation: 0,
+              padding: { top: 0, bottom: 0, left: 0, right: 0 },
+            };
+          }
+          try {
+            return origCameraUpdate(tr);
+          } catch {
+            return tr;
+          }
+        };
+      }
+    }
     setIsMapReady(true);
   }, []);
 
@@ -974,11 +997,15 @@ const TouristMap: React.FC = () => {
     if (!mapRef.current) return;
     const coords = zone.coords;
     if (coords && coords.length === 2) {
-      mapRef.current.flyTo({
-        center: [coords[1], coords[0]],
-        zoom: 14,
-        essential: true,
-      });
+      try {
+        const map = mapRef.current.getMap?.() || mapRef.current;
+        (map as any).jumpTo({
+          center: [coords[1], coords[0]],
+          zoom: 14,
+        });
+      } catch (e) {
+        console.warn("jumpTo zone error", e);
+      }
       setSelectedEntity({ id: zone._id || (zone as any).id, type: "danger" });
       setIsManageZonesOpen(false);
     }
@@ -1057,11 +1084,15 @@ const TouristMap: React.FC = () => {
       [Math.max(...lngs), Math.max(...lats)],
     ];
 
-    map.fitBounds(bounds, {
-      padding: 80,
-      maxZoom: 13,
-      duration: 800,
-    });
+    try {
+      map.fitBounds(bounds, {
+        padding: 60,
+        maxZoom: 13,
+        duration: 0,
+      });
+    } catch (e) {
+      console.warn("fitBounds failed:", e);
+    }
     hasAutoFitTouristsRef.current = true;
   }, [data, isMapReady]);
 
@@ -1347,10 +1378,18 @@ const TouristMap: React.FC = () => {
 
       source?.getClusterExpansionZoom(clusterId, (err, zoom) => {
         if (err) return;
-        mapRef.current?.easeTo({
-          center: feature.geometry.coordinates,
-          zoom: zoom || 14,
-        });
+        try {
+          const coords = (feature?.geometry as any)?.coordinates;
+          if (Array.isArray(coords) && coords.length >= 2) {
+            const map = mapRef.current?.getMap?.() || mapRef.current;
+            (map as any)?.jumpTo({
+              center: [coords[0], coords[1]],
+              zoom: zoom || 14,
+            });
+          }
+        } catch (e) {
+          console.warn("cluster expansion error:", e);
+        }
       });
     } else {
       // Clicked empty space - Close Panel
