@@ -33,9 +33,10 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import * as maplibregl from "maplibre-gl";
 
-// Ensure MapLibre Web Worker loads correctly in Vite production bundle & SPA
+// Ensure MapLibre Web Worker loads reliably across all browsers and production builds
 if (typeof window !== "undefined") {
-  (maplibregl as any).config.WORKER_URL = `${window.location.origin}/maplibre-gl-worker.mjs`;
+  (maplibregl as any).config.WORKER_URL =
+    "https://unpkg.com/maplibre-gl@6.12.0/dist/maplibre-gl-worker.mjs";
 }
 
 import {
@@ -65,32 +66,43 @@ const EFFECTIVE_TOKEN =
     ? MAPBOX_TOKEN
     : "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA";
 
+const CARTO_RASTER_STYLE = {
+  version: 8 as const,
+  glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+  sources: {
+    "carto-raster-tiles": {
+      type: "raster" as const,
+      tiles: [
+        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+      ],
+      tileSize: 256,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    },
+  },
+  layers: [
+    {
+      id: "carto-raster-layer",
+      type: "raster" as const,
+      source: "carto-raster-tiles",
+      minzoom: 0,
+      maxzoom: 20,
+    },
+  ],
+};
+
+const CARTO_VECTOR_STYLE =
+  "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+
 const DEFAULT_MAP_STYLE =
   MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith("pk.")
     ? "mapbox://styles/mapbox/outdoors-v12"
-    : {
-        version: 8 as const,
-        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-        sources: {
-          "osm-tiles": {
-            type: "raster" as const,
-            tiles: [
-              "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
-            ],
-            tileSize: 256,
-            attribution: "&copy; OpenStreetMap contributors",
-          },
-        },
-        layers: [
-          {
-            id: "osm-tiles-layer",
-            type: "raster" as const,
-            source: "osm-tiles",
-            minzoom: 0,
-            maxzoom: 19,
-          },
-        ],
-      };
+    : CARTO_VECTOR_STYLE;
+
+const FALLBACK_MAP_STYLE = CARTO_RASTER_STYLE;
 
 const getCircleCoordinates = (
   lat: number,
@@ -217,6 +229,7 @@ const TouristMap: React.FC = () => {
   const prevConnectionRef = useRef<boolean>(false);
   const hasAutoFitTouristsRef = useRef<boolean>(false);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [currentMapStyle, setCurrentMapStyle] = useState<any>(DEFAULT_MAP_STYLE);
 
   const onMapLoad = useCallback(() => {
     setIsMapReady(true);
@@ -1403,7 +1416,7 @@ const TouristMap: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 h-[950px]">
         {/* Main Map Area */}
-        <div className="xl:col-span-2 relative h-full rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        <div className="xl:col-span-2 relative h-full rounded-xl shadow-lg border border-gray-200 overflow-hidden bg-[#e5e3df]">
           <Map
             ref={mapRef}
             mapLib={maplibregl as any}
@@ -1413,7 +1426,13 @@ const TouristMap: React.FC = () => {
               zoom: 13,
             }}
             style={{ width: "100%", height: "100%" }}
-            mapStyle={DEFAULT_MAP_STYLE as any}
+            mapStyle={currentMapStyle}
+            onError={(e) => {
+              console.warn("Map style load failed, falling back to CARTO raster style:", e);
+              if (currentMapStyle !== FALLBACK_MAP_STYLE) {
+                setCurrentMapStyle(FALLBACK_MAP_STYLE);
+              }
+            }}
             onLoad={onMapLoad}
             interactiveLayerIds={[
               ...(touristSource.features.length > 0 &&
