@@ -7,14 +7,19 @@ import Constants from "expo-constants";
 // - For iOS simulator: use http://localhost:5000
 // When running on web or locally, connect to local backend if running on localhost or specified in env
 const isWeb = typeof window !== "undefined";
-const isDirectLocal8081 = isWeb && (window.location.port === "8081" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"));
+const hostname = isWeb ? window.location.hostname : "";
+const isDirectLocal8081 = isWeb && (window.location.port === "8081" && (hostname === "localhost" || hostname === "127.0.0.1"));
+const isVercel = isWeb && hostname.endsWith(".vercel.app");
+const isTunnelOrGateway = isWeb && (hostname.endsWith(".trycloudflare.com") || window.location.port === "3000");
 
 export const SERVER_URL =
-  (isDirectLocal8081
-    ? `http://${window.location.hostname}:5001`
-    : (isWeb
-        ? window.location.origin
-        : (process.env.SERVER_URL || Constants.expoConfig?.extra?.SERVER_URL || "http://localhost:5001")));
+  isDirectLocal8081
+    ? `http://${hostname}:5001`
+    : (isVercel
+        ? "https://safe-tourist-backend-ix0g.onrender.com"
+        : (isTunnelOrGateway
+            ? window.location.origin
+            : (process.env.SERVER_URL || Constants.expoConfig?.extra?.SERVER_URL || "https://safe-tourist-backend-ix0g.onrender.com")));
 
 // AI model URLs for getting safety score predictions
 export const GEO_MODEL_URL =

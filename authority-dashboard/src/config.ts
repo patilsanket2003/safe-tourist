@@ -18,7 +18,7 @@ const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
 export const API_BASE_URL =
   (!isLocalhost && (envBase.includes("localhost") || envBase.includes("127.0.0.1")))
     ? ""
-    : (isProxiedHost ? "" : (envBase || ""));
+    : (isProxiedHost ? "" : (envBase || "https://safe-tourist-backend-ix0g.onrender.com"));
 
 // Path Deviation backend — deployed on Render
 // Previously pointed to localhost:8000 which caused live location sharing to break.
