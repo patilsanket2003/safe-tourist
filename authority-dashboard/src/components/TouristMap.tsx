@@ -1436,7 +1436,6 @@ const TouristMap: React.FC = () => {
             ]}
             onClick={onMapClick}
             cursor="pointer"
-            padding={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <NavigationControl position="top-right" showCompass={false} />
             <FullscreenControl position="top-right" />

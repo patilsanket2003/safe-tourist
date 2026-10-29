@@ -807,74 +807,85 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={chartSeries}
-                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#F3F4F6"
-                  />
-                  <XAxis
-                    dataKey="time"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#9CA3AF" }}
-                    dy={10}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#9CA3AF" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: "12px",
-                      border: "none",
-                      boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
-                    }}
-                    itemStyle={{
-                      color: "#111827",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                    }}
-                    cursor={{ stroke: "#E5E7EB", strokeWidth: 1 }}
-                    labelStyle={{
-                      color: "#6B7280",
-                      marginBottom: "0.25rem",
-                      fontSize: "10px",
-                      textTransform: "uppercase",
-                    }}
-                    formatter={(value: any) => [
-                      `${Number(value).toFixed(2)} min`,
-                      "Response Time",
-                    ]}
-                  />
-                  <ReferenceLine y={15} stroke="#EF4444" strokeDasharray="3 3">
-                    <Label
-                      value="SLA Threshold (15m)"
-                      position="insideTopRight"
-                      fill="#EF4444"
-                      fontSize={10}
+              {chartSeries && chartSeries.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={chartSeries}
+                    margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="#F3F4F6"
                     />
-                  </ReferenceLine>
-                  <Line
-                    type="monotone"
-                    dataKey="responseTime"
-                    stroke="#3B82F6"
-                    strokeWidth={3}
-                    dot={{
-                      r: 4,
-                      fill: "#3B82F6",
-                      strokeWidth: 2,
-                      stroke: "#fff",
-                    }}
-                    activeDot={{ r: 6, strokeWidth: 0 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+                    <XAxis
+                      dataKey="time"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: "#9CA3AF" }}
+                      dy={10}
+                      padding={{ left: 10, right: 10 }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: "#9CA3AF" }}
+                      domain={[0, "auto"]}
+                      padding={{ top: 10, bottom: 10 }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: "12px",
+                        border: "none",
+                        boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
+                      }}
+                      itemStyle={{
+                        color: "#111827",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                      }}
+                      cursor={{ stroke: "#E5E7EB", strokeWidth: 1 }}
+                      labelStyle={{
+                        color: "#6B7280",
+                        marginBottom: "0.25rem",
+                        fontSize: "10px",
+                        textTransform: "uppercase",
+                      }}
+                      formatter={(value: any) => [
+                        `${Number(value).toFixed(2)} min`,
+                        "Response Time",
+                      ]}
+                    />
+                    <ReferenceLine y={15} stroke="#EF4444" strokeDasharray="3 3">
+                      <Label
+                        value="SLA Threshold (15m)"
+                        position="insideTopRight"
+                        fill="#EF4444"
+                        fontSize={10}
+                      />
+                    </ReferenceLine>
+                    <Line
+                      type="monotone"
+                      dataKey="responseTime"
+                      stroke="#3B82F6"
+                      strokeWidth={3}
+                      dot={{
+                        r: 4,
+                        fill: "#3B82F6",
+                        strokeWidth: 2,
+                        stroke: "#fff",
+                      }}
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 rounded-xl border border-dashed border-gray-200 p-6">
+                  <Clock className="h-8 w-8 mb-2 text-gray-300" />
+                  <p className="text-sm font-medium text-gray-600">No response time data recorded yet</p>
+                  <p className="text-xs text-gray-400 mt-1">SLA response times will display here automatically as incidents are resolved.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -955,52 +966,68 @@ const Dashboard: React.FC = () => {
               <p className="text-xs text-gray-500 mb-6">Volume by risk level</p>
 
               <div className="h-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={severityData}
-                    barSize={32}
-                    margin={{ top: 20 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      vertical={false}
-                      stroke="#F3F4F6"
-                    />
-                    <XAxis
-                      dataKey="severity"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 10, fill: "#6B7280", fontWeight: 600 }}
-                      dy={10}
-                    />
-                    <YAxis hide />
-                    <Tooltip
-                      cursor={{ fill: "#F9FAFB" }}
-                      contentStyle={{
-                        borderRadius: "8px",
-                        border: "none",
-                        boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                      }}
-                    />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                      {severityData.map((entry, index) => {
-                        let fill = "#9CA3AF";
-                        if (entry.severity === "critical") fill = "#EF4444";
-                        if (entry.severity === "high") fill = "#F97316";
-                        if (entry.severity === "medium") fill = "#EAB308";
-                        if (entry.severity === "low") fill = "#3B82F6";
-                        return <Cell key={`cell-${index}`} fill={fill} />;
-                      })}
-                      <LabelList
-                        dataKey="count"
-                        position="top"
-                        fill="#374151"
-                        fontSize={12}
-                        fontWeight="bold"
+                {severityData && severityData.some((d) => d.count > 0) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={severityData}
+                      barSize={32}
+                      margin={{ top: 20, right: 15, left: 15, bottom: 10 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke="#F3F4F6"
                       />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                      <XAxis
+                        dataKey="severity"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: "#6B7280", fontWeight: 600 }}
+                        dy={10}
+                        padding={{ left: 10, right: 10 }}
+                      />
+                      <YAxis
+                        domain={[0, "auto"]}
+                        allowDecimals={false}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                        padding={{ top: 10, bottom: 0 }}
+                      />
+                      <Tooltip
+                        cursor={{ fill: "#F9FAFB" }}
+                        contentStyle={{
+                          borderRadius: "8px",
+                          border: "none",
+                          boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                        }}
+                      />
+                      <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                        {severityData.map((entry, index) => {
+                          let fill = "#9CA3AF";
+                          if (entry.severity === "critical") fill = "#EF4444";
+                          if (entry.severity === "high") fill = "#F97316";
+                          if (entry.severity === "medium") fill = "#EAB308";
+                          if (entry.severity === "low") fill = "#3B82F6";
+                          return <Cell key={`cell-${index}`} fill={fill} />;
+                        })}
+                        <LabelList
+                          dataKey="count"
+                          position="top"
+                          fill="#374151"
+                          fontSize={12}
+                          fontWeight="bold"
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 rounded-xl border border-dashed border-gray-200 p-6">
+                    <ShieldAlert className="h-8 w-8 mb-2 text-gray-300" />
+                    <p className="text-sm font-medium text-gray-600">No incident severity data</p>
+                    <p className="text-xs text-gray-400 mt-1">Incident counts by priority level will appear here.</p>
+                  </div>
+                )}
               </div>
 
               {patterns.length > 0 && (
