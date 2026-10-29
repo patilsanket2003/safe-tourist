@@ -33,10 +33,15 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import * as maplibregl from "maplibre-gl";
 
-// Ensure MapLibre Web Worker loads reliably across all browsers and production builds
+// Ensure MapLibre Web Worker loads reliably
 if (typeof window !== "undefined") {
-  (maplibregl as any).config.WORKER_URL =
-    "https://unpkg.com/maplibre-gl@6.12.0/dist/maplibre-gl-worker.mjs";
+  try {
+    (maplibregl as any).setWorkerUrl?.(
+      "https://unpkg.com/maplibre-gl@6.12.0/dist/maplibre-gl-worker.mjs",
+    );
+  } catch (e) {
+    // Ignore
+  }
 }
 
 import {
@@ -68,7 +73,6 @@ const EFFECTIVE_TOKEN =
 
 const CARTO_RASTER_STYLE = {
   version: 8 as const,
-  glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
   sources: {
     "carto-raster-tiles": {
       type: "raster" as const,
@@ -94,15 +98,7 @@ const CARTO_RASTER_STYLE = {
   ],
 };
 
-const CARTO_VECTOR_STYLE =
-  "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
-
-const DEFAULT_MAP_STYLE =
-  MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith("pk.")
-    ? "mapbox://styles/mapbox/outdoors-v12"
-    : CARTO_VECTOR_STYLE;
-
-const FALLBACK_MAP_STYLE = CARTO_RASTER_STYLE;
+const DEFAULT_MAP_STYLE = CARTO_RASTER_STYLE;
 
 const getCircleCoordinates = (
   lat: number,
@@ -229,7 +225,6 @@ const TouristMap: React.FC = () => {
   const prevConnectionRef = useRef<boolean>(false);
   const hasAutoFitTouristsRef = useRef<boolean>(false);
   const [isMapReady, setIsMapReady] = useState(false);
-  const [currentMapStyle, setCurrentMapStyle] = useState<any>(DEFAULT_MAP_STYLE);
 
   const onMapLoad = useCallback(() => {
     setIsMapReady(true);
@@ -991,10 +986,10 @@ const TouristMap: React.FC = () => {
   );
 
   const touristSource = useMemo(() => {
-    if (!data) return EMPTY_FC;
+    if (!data?.mapData?.tourists || !Array.isArray(data.mapData.tourists)) return EMPTY_FC;
     const validTourists = data.mapData.tourists.filter((tourist) => {
-      const lat = Number(tourist.location?.lat);
-      const lng = Number(tourist.location?.lng);
+      const lat = Number(tourist?.location?.lat);
+      const lng = Number(tourist?.location?.lng);
       return (
         Number.isFinite(lat) &&
         Number.isFinite(lng) &&
@@ -1006,12 +1001,6 @@ const TouristMap: React.FC = () => {
         lng <= 180
       );
     });
-    console.log(
-      "[Map] touristSource valid/total =",
-      validTourists.length,
-      "/",
-      data.mapData.tourists.length,
-    );
     return {
       type: "FeatureCollection" as const,
       features: validTourists.map((t) => ({
@@ -1025,7 +1014,7 @@ const TouristMap: React.FC = () => {
         },
         geometry: {
           type: "Point",
-          coordinates: [t.location.lng, t.location.lat],
+          coordinates: [t.location?.lng ?? 0, t.location?.lat ?? 0],
         },
       })),
     };
@@ -1072,17 +1061,20 @@ const TouristMap: React.FC = () => {
 
 
   const alertSource = useMemo(() => {
-    if (!data) return null;
+    if (!data?.mapData?.activeAlerts || !Array.isArray(data.mapData.activeAlerts)) return null;
+    const validAlerts = data.mapData.activeAlerts.filter(
+      (a) => a && a.location && Number.isFinite(a.location.lat) && Number.isFinite(a.location.lng),
+    );
     return {
       type: "FeatureCollection",
-      features: data.mapData.activeAlerts.map((a) => ({
+      features: validAlerts.map((a) => ({
         type: "Feature",
         properties: {
           id: a.id,
           type: "alert",
-          status: a.status,
-          priority: a.priority,
-          locationName: a.locationName,
+          status: a.status || "active",
+          priority: a.priority || "high",
+          locationName: a.locationName || "Alert Location",
         },
         geometry: {
           type: "Point",
@@ -1093,10 +1085,10 @@ const TouristMap: React.FC = () => {
   }, [data]);
 
   const incidentSource = useMemo(() => {
-    if (!data) return null;
+    if (!data?.mapData?.incidents || !Array.isArray(data.mapData.incidents)) return null;
     const validIncidents = data.mapData.incidents.filter((incident) => {
-      const lat = Number(incident.location?.lat);
-      const lng = Number(incident.location?.lng);
+      const lat = Number(incident?.location?.lat);
+      const lng = Number(incident?.location?.lng);
       return (
         Number.isFinite(lat) &&
         Number.isFinite(lng) &&
@@ -1107,13 +1099,6 @@ const TouristMap: React.FC = () => {
       );
     });
 
-    console.log(
-      "[Map] incidentSource valid/total =",
-      validIncidents.length,
-      "/",
-      data.mapData.incidents.length,
-    );
-
     return {
       type: "FeatureCollection",
       features: validIncidents.map((i) => ({
@@ -1121,8 +1106,8 @@ const TouristMap: React.FC = () => {
         properties: {
           id: i.id,
           type: "incident",
-          title: i.title,
-          category: i.category,
+          title: i.title || "Incident",
+          category: i.category || "General",
         },
         geometry: {
           type: "Point",
@@ -1152,7 +1137,7 @@ const TouristMap: React.FC = () => {
 
   // Danger Zones Source (solid borders, diagonal stripes pattern)
   const dangerZoneSource = useMemo(() => {
-    if (!styledZones || !styledZones.dangerZones) return null;
+    if (!styledZones || !Array.isArray(styledZones.dangerZones)) return null;
 
     // Filter zones based on layer toggles
     const visibleZones = styledZones.dangerZones.filter((z) => {
@@ -1165,11 +1150,13 @@ const TouristMap: React.FC = () => {
 
     return {
       type: "FeatureCollection",
-      features: visibleZones.map((z) => {
+      features: visibleZones
+        .filter((z) => (z.polygonCoords && z.polygonCoords.length > 0) || (Array.isArray(z.coords) && z.coords.length >= 2))
+        .map((z) => {
         const isMil = isMilitaryZone(z);
         // Calculate radius in KM
         const radiusKm =
-          z.radiusKm || getRadiusForRiskLevel(z.riskLevel) / 1000;
+          z.radiusKm || getRadiusForRiskLevel(z.riskLevel || "Medium") / 1000;
 
         // Polygon zones
         if (z.polygonCoords && z.polygonCoords.length > 0) {
@@ -1180,10 +1167,10 @@ const TouristMap: React.FC = () => {
               type: "danger",
               zoneType: isMil ? "military_zone" : "danger_zone",
               isMilitary: isMil,
-              riskLevel: z.riskLevel,
-              name: z.name,
-              category: z.category,
-              state: z.state,
+              riskLevel: z.riskLevel || "Medium",
+              name: z.name || "Danger Zone",
+              category: z.category || "General",
+              state: z.state || "",
               radius: radiusKm * 1000,
               borderStyle: z.visualStyle?.borderStyle || "solid",
               borderWidth: z.visualStyle?.borderWidth || 3,
@@ -1198,9 +1185,11 @@ const TouristMap: React.FC = () => {
         }
 
         // Circle zones (converted to Polygon for size persistence)
+        const lat = Array.isArray(z.coords) ? Number(z.coords[0]) : 0;
+        const lng = Array.isArray(z.coords) ? Number(z.coords[1]) : 0;
         const coordinates = getCircleCoordinates(
-          z.coords[0],
-          z.coords[1],
+          lat,
+          lng,
           radiusKm,
         );
 
@@ -1211,10 +1200,10 @@ const TouristMap: React.FC = () => {
             type: "danger",
             zoneType: isMil ? "military_zone" : "danger_zone",
             isMilitary: isMil,
-            riskLevel: z.riskLevel,
-            name: z.name,
-            category: z.category,
-            state: z.state,
+            riskLevel: z.riskLevel || "Medium",
+            name: z.name || "Danger Zone",
+            category: z.category || "General",
+            state: z.state || "",
             radius: radiusKm * 1000,
             borderStyle: z.visualStyle?.borderStyle || "solid",
             borderWidth: z.visualStyle?.borderWidth || 3,
@@ -1232,16 +1221,18 @@ const TouristMap: React.FC = () => {
 
   // Risk Grids Source (dashed borders, dots pattern, circular grids)
   const riskGridSource = useMemo(() => {
-    if (!styledZones || !styledZones.riskGrids) return null;
+    if (!styledZones || !Array.isArray(styledZones.riskGrids)) return null;
     return {
       type: "FeatureCollection",
-      features: styledZones.riskGrids.map((grid) => {
+      features: styledZones.riskGrids
+        .filter((grid) => grid?.location?.coordinates && Array.isArray(grid.location.coordinates) && grid.location.coordinates.length >= 2)
+        .map((grid) => {
         const [lng, lat] = grid.location.coordinates;
         // User requested 1km circle for risk grids
         const radiusKm = 1;
 
         // Generate circular polygon (approx 1km radius)
-        const coordinates = getCircleCoordinates(lat, lng, radiusKm);
+        const coordinates = getCircleCoordinates(Number(lat) || 0, Number(lng) || 0, radiusKm);
 
         return {
           type: "Feature",
@@ -1249,15 +1240,15 @@ const TouristMap: React.FC = () => {
             id: grid._id,
             type: "risk_grid",
             zoneType: "risk_grid",
-            riskLevel: grid.riskLevel,
-            name: grid.gridName,
-            gridId: grid.gridId,
-            riskScore: grid.riskScore,
-            lastUpdated: grid.lastUpdated,
-            borderStyle: grid.visualStyle.borderStyle,
-            borderWidth: grid.visualStyle.borderWidth,
-            fillOpacity: grid.visualStyle.fillOpacity,
-            fillPattern: grid.visualStyle.fillPattern, // Pass pattern name
+            riskLevel: grid.riskLevel || "Medium",
+            name: grid.gridName || "Risk Grid",
+            gridId: grid.gridId || "",
+            riskScore: grid.riskScore || 0,
+            lastUpdated: grid.lastUpdated || new Date().toISOString(),
+            borderStyle: grid.visualStyle?.borderStyle || "dashed",
+            borderWidth: grid.visualStyle?.borderWidth || 2,
+            fillOpacity: grid.visualStyle?.fillOpacity || 0.4,
+            fillPattern: grid.visualStyle?.fillPattern || "dots",
             reasons: JSON.stringify(grid.reasons || []),
           },
           geometry: {
@@ -1419,23 +1410,16 @@ const TouristMap: React.FC = () => {
         <div className="xl:col-span-2 relative h-full rounded-xl shadow-lg border border-gray-200 overflow-hidden bg-[#e5e3df]">
           <Map
             ref={mapRef}
-            mapLib={maplibregl as any}
             initialViewState={{
               longitude: 72.9691,
               latitude: 19.2714,
               zoom: 13,
             }}
             style={{ width: "100%", height: "100%" }}
-            mapStyle={currentMapStyle}
-            onError={(e) => {
-              console.warn("Map style load failed, falling back to CARTO raster style:", e);
-              if (currentMapStyle !== FALLBACK_MAP_STYLE) {
-                setCurrentMapStyle(FALLBACK_MAP_STYLE);
-              }
-            }}
+            mapStyle={DEFAULT_MAP_STYLE as any}
             onLoad={onMapLoad}
             interactiveLayerIds={[
-              ...(touristSource.features.length > 0 &&
+              ...(touristSource?.features?.length > 0 &&
               (layers.activeTourists || layers.inactiveTourists)
                 ? ["tourist-circles"]
                 : []),
@@ -1479,7 +1463,7 @@ const TouristMap: React.FC = () => {
                       "#4f46e5",
                       [
                         "match",
-                        ["downcase", ["get", "riskLevel"]],
+                        ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                         "critical",
                         "#dc2626",
                         "very high",
@@ -1526,7 +1510,7 @@ const TouristMap: React.FC = () => {
                       "#3730a3",
                       [
                         "match",
-                        ["downcase", ["get", "riskLevel"]],
+                        ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                         "critical",
                         "#991b1b",
                         "very high",
@@ -1550,7 +1534,7 @@ const TouristMap: React.FC = () => {
                   paint={{
                     "line-color": [
                       "match",
-                      ["downcase", ["get", "riskLevel"]],
+                      ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                       "critical",
                       "#991b1b",
                       "very high",
@@ -1574,7 +1558,7 @@ const TouristMap: React.FC = () => {
                   paint={{
                     "line-color": [
                       "match",
-                      ["downcase", ["get", "riskLevel"]],
+                      ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                       "critical",
                       "#991b1b",
                       "very high",
@@ -1608,7 +1592,7 @@ const TouristMap: React.FC = () => {
                   paint={{
                     "fill-color": [
                       "match",
-                      ["downcase", ["get", "riskLevel"]],
+                      ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                       "critical",
                       "#dc2626",
                       "very high",
@@ -1651,7 +1635,7 @@ const TouristMap: React.FC = () => {
                   paint={{
                     "line-color": [
                       "match",
-                      ["downcase", ["get", "riskLevel"]],
+                      ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                       "critical",
                       "#991b1b",
                       "very high",
@@ -1682,7 +1666,7 @@ const TouristMap: React.FC = () => {
                   paint={{
                     "line-color": [
                       "match",
-                      ["downcase", ["get", "riskLevel"]],
+                      ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                       "critical",
                       "#991b1b",
                       "very high",
@@ -1714,7 +1698,7 @@ const TouristMap: React.FC = () => {
                   paint={{
                     "line-color": [
                       "match",
-                      ["downcase", ["get", "riskLevel"]],
+                      ["downcase", ["coalesce", ["get", "riskLevel"], "medium"]],
                       "critical",
                       "#991b1b",
                       "very high",
@@ -1874,7 +1858,7 @@ const TouristMap: React.FC = () => {
                     "circle-color": "#ef4444",
                     "circle-radius": [
                       "match",
-                      ["downcase", ["get", "priority"]],
+                      ["downcase", ["coalesce", ["get", "priority"], "medium"]],
                       "critical",
                       14,
                       "high",
@@ -2248,7 +2232,7 @@ const TouristMap: React.FC = () => {
               {(selectedEntity.type === "danger" ||
                 selectedEntity.type === "zone") &&
                 (() => {
-                  const dangerZone = styledZones?.dangerZones.find(
+                  const dangerZone = styledZones?.dangerZones?.find(
                     (z) => z._id === selectedEntity.id || (z as any).id === selectedEntity.id,
                   );
                   if (!dangerZone)
@@ -2379,7 +2363,7 @@ const TouristMap: React.FC = () => {
 
               {selectedEntity.type === "risk_grid" &&
                 (() => {
-                  const riskGrid = styledZones?.riskGrids.find(
+                  const riskGrid = styledZones?.riskGrids?.find(
                     (g) => g._id === selectedEntity.id,
                   );
                   if (!riskGrid)
@@ -2513,9 +2497,9 @@ const TouristMap: React.FC = () => {
               </div>
               <div className="divide-y divide-gray-100">
                 {data && (() => {
-                  const activeCount = data.mapData.tourists.filter((t) => t.status === "active").length;
-                  const inactiveCount = data.mapData.tourists.filter((t) => t.status !== "active").length;
-                  const totalCount = data.stats.totalTourists || data.mapData.tourists.length;
+                  const activeCount = data.mapData?.tourists?.filter((t) => t.status === "active").length || 0;
+                  const inactiveCount = data.mapData?.tourists?.filter((t) => t.status !== "active").length || 0;
+                  const totalCount = data.stats?.totalTourists || data.mapData?.tourists?.length || 0;
 
                   return (
                     <>

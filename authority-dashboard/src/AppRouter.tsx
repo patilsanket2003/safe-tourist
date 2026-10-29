@@ -38,6 +38,8 @@ interface AppRouterProps {
 
 import GlobalAlertListener from "./components/GlobalAlertListener";
 
+import ErrorBoundary from "./components/ErrorBoundary";
+
 // Page title mapping
 const pageTitles: Record<string, string> = {
   dashboard: "Dashboard",
@@ -103,7 +105,9 @@ const ProtectedLayout: React.FC<{ user: User; onLogout: () => void }> = ({
           </header>
 
           <main className="p-6 flex-1 overflow-auto">
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           </main>
         </SidebarInset>
       </div>
