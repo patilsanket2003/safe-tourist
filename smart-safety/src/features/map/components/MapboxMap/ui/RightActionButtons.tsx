@@ -14,6 +14,8 @@ interface RightActionButtonsProps {
     visible?: boolean;
     showHazards?: boolean;
     onToggleHazards?: () => void;
+    showMilitaryZones?: boolean;
+    onToggleMilitary?: () => void;
 }
 
 export default function RightActionButtons({
@@ -28,6 +30,8 @@ export default function RightActionButtons({
     visible = true,
     showHazards = true,
     onToggleHazards,
+    showMilitaryZones = false,
+    onToggleMilitary,
 }: RightActionButtonsProps) {
     if (!visible) return null;
     return (
@@ -76,7 +80,7 @@ export default function RightActionButtons({
                     </TouchableOpacity>
                 )}
 
-                {/* Toggle Hazards Button */}
+                {/* Toggle Hazards Button (Civilian Danger Zones) */}
                 {onToggleHazards && (
                     <TouchableOpacity
                         style={[styles.button, styles.hazardsButton]}
@@ -84,6 +88,26 @@ export default function RightActionButtons({
                         activeOpacity={0.85}
                     >
                         <MaterialCommunityIcons name={showHazards ? 'eye' : 'eye-off'} size={20} color="#F59E0B" />
+                    </TouchableOpacity>
+                )}
+
+                {/* Separate Toggle Military Zones Button */}
+                {onToggleMilitary && (
+                    <TouchableOpacity
+                        style={[
+                            styles.button,
+                            styles.militaryButton,
+                            showMilitaryZones && styles.militaryButtonActive,
+                        ]}
+                        onPress={onToggleMilitary}
+                        activeOpacity={0.85}
+                        accessibilityLabel={showMilitaryZones ? "Hide Military Zones" : "Show Military Zones"}
+                    >
+                        <MaterialCommunityIcons
+                            name={showMilitaryZones ? 'shield-alert' : 'shield-outline'}
+                            size={20}
+                            color={showMilitaryZones ? '#4F46E5' : '#9CA3AF'}
+                        />
                     </TouchableOpacity>
                 )}
             </View>
@@ -141,6 +165,14 @@ const styles = StyleSheet.create({
     hazardsButton: {
         backgroundColor: '#fffbeb',
         borderColor: '#fef3c7',
+    },
+    militaryButton: {
+        backgroundColor: '#f8fafc',
+        borderColor: '#e2e8f0',
+    },
+    militaryButtonActive: {
+        backgroundColor: '#eef2ff',
+        borderColor: '#c7d2fe',
     },
     sosButton: {
         backgroundColor: '#EF4444',

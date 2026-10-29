@@ -35,32 +35,56 @@ exports.getMapOverview = async (req, res, next) => {
 
       let location = null;
 
+      const isMockCoord = (lat, lng) => {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return true;
+        if (lat === 0 && lng === 0) return true;
+        if (Math.abs(lat - 19.0760) < 0.001 && Math.abs(lng - 72.8777) < 0.001) return true;
+        return false;
+      };
+
       // 1. Check in-memory real-time socket location
-      const socketLoc = liveLocations.get(t.touristId);
-      if (socketLoc && Number.isFinite(socketLoc.lat) && Number.isFinite(socketLoc.lng)) {
+      const socketLoc = liveLocations.get(t.touristId) || liveLocations.get(t._id?.toString());
+      if (socketLoc && !isMockCoord(socketLoc.lat, socketLoc.lng)) {
         location = { lat: socketLoc.lat, lng: socketLoc.lng };
       }
 
-      // 2. Check latest Transition record
+      // 2. Check Tourist document's stored lastKnownLocation
+      if (!location && t.lastKnownLocation && !isMockCoord(t.lastKnownLocation.lat, t.lastKnownLocation.lng)) {
+        location = { lat: t.lastKnownLocation.lat, lng: t.lastKnownLocation.lng };
+      }
+
+      // 3. Check latest Transition record
       if (!location) {
         const lastTransition = await Transition.findOne({ digitalId: t.touristId }).sort({ timestamp: -1 }).lean();
-        if (lastTransition && lastTransition.location) {
+        if (lastTransition && lastTransition.location && !isMockCoord(lastTransition.location.latitude, lastTransition.location.longitude)) {
           location = { lat: lastTransition.location.latitude, lng: lastTransition.location.longitude };
         }
       }
 
-      // 3. Check latest SOSAlert record
+      // 4. Check latest SOSAlert record
       if (!location) {
         const lastAlert = await SOSAlert.findOne({ touristId: t._id }).sort({ createdAt: -1 }).lean();
         if (lastAlert && lastAlert.location && Array.isArray(lastAlert.location.coordinates) && lastAlert.location.coordinates.length >= 2) {
-          location = { lat: lastAlert.location.coordinates[1], lng: lastAlert.location.coordinates[0] };
+          const lat = lastAlert.location.coordinates[1];
+          const lng = lastAlert.location.coordinates[0];
+          if (!isMockCoord(lat, lng)) {
+            location = { lat, lng };
+          }
         }
       }
+
+      const isOnline = Boolean(
+        (realtimeService && typeof realtimeService.isTouristOnline === 'function') &&
+        (realtimeService.isTouristOnline(t.touristId) || realtimeService.isTouristOnline(t._id?.toString()))
+      );
+
+      const status = isOnline ? 'active' : 'inactive';
 
       return {
         id: t.touristId,
         name: name,
-        status: isActive ? 'active' : 'expired',
+        status: status,
+        isOnline: isOnline,
         safetyScore: t.safetyScore,
         location: location,
         type: 'tourist'
@@ -120,10 +144,15 @@ exports.getMapOverview = async (req, res, next) => {
     }));
 
 
+    const activeTourists = tourists.filter(t => t.status === 'active').length;
+    const inactiveTourists = tourists.filter(t => t.status === 'inactive').length;
+
     res.status(200).json({
       success: true,
       stats: {
         totalTourists,
+        activeTourists,
+        inactiveTourists,
         activeAlerts: activeAlertsCount,
         highRiskZones: highRiskZonesCount,
         responseUnits: responseUnitsCount

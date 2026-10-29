@@ -7,16 +7,18 @@ import {
   useRef,
   useState,
 } from "react";
-import geofenceService from "../features/map/services/geofenceService";
+import geofenceService, { isRedOrRestrictedZone } from "../features/map/services/geofenceService";
 import * as itineraryDeviation from "../features/map/services/itineraryDeviationMonitor";
 import { appendTransition } from "../features/map/store/transitionStore";
 import { syncTransitions } from "../features/map/services/syncTransitions";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import { showToast } from "../utils/toast";
 import {
   triggerHighRiskAlert,
   triggerSirenAlert,
   stopSirenAlert,
+  exitRestrictedZone,
+  setSirenAuthStatus,
   startProgressiveAlert,
   stopProgressiveAlert,
   acknowledgeHighRisk as ackHighRisk,
@@ -270,6 +272,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
+  // Keep alertHelpers siren capability synced with authenticated state
+  useEffect(() => {
+    const isAuth = !!(state.user && state.token);
+    setSirenAuthStatus(isAuth);
+    if (!isAuth) {
+      exitRestrictedZone().catch(() => {});
+      try { geofenceService.stopMonitoring(); } catch (_) {}
+    }
+  }, [state.user, state.token]);
+
   // Centralized offline setter so both UI toggle and NetInfo use same logic
   const handleSetOffline = (v: boolean) => {
     try {
@@ -501,17 +513,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // frequent re-renders and UI jitter, especially on lower-end devices).
   useEffect(() => {
     if (!hydrated) return;
-    // ⛔ Do NOT start geofence / siren monitoring until user is logged in
-    if (!state.token || !state.user) return;
     let mounted = true;
 
     (async () => {
       try {
-        // Pass userId to loadFences to fetch user's personal itinerary geofences
-        const userId = state.user?.touristId;
-        await geofenceService.loadFences(undefined, undefined, userId);
-        // start geofence monitoring with 5-second interval for real-time safety response
-        await geofenceService.startMonitoring({ intervalMs: 5000 });
+        // Only load personal fences and start monitoring if user is authenticated
+        if (stateRef.current.user && stateRef.current.token) {
+          const userId = stateRef.current.user?.touristId;
+          await geofenceService.loadFences(undefined, undefined, userId);
+          // start geofence monitoring with 5-second interval for real-time safety response
+          await geofenceService.startMonitoring({ intervalMs: 5000 });
+        }
 
         // Start itinerary deviation monitoring if user has itinerary
         if (state.user?.dayWiseItinerary && state.user.dayWiseItinerary.length > 0) {
@@ -553,6 +565,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         geofenceService.on("enter", ({ fence, location }) => {
+          // Strictly ignore if user is unauthenticated or logged out
+          if (!stateRef.current.user || !stateRef.current.token) return;
+
           try {
             showToast(`Entered: ${fence.name} (${fence.category || "zone"})`);
           } catch (e) {
@@ -567,30 +582,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           try {
             const rl = (fence.riskLevel || "").toString().toLowerCase();
-            const category = (fence.category || "").toLowerCase();
-            const name = (fence.name || "").toLowerCase();
 
-            // Check if it's a red zone, restricted area, or hazard zone that needs immediate siren & vibration
-            const isRedOrRestricted = 
-              category.includes('lightning') || category.includes('thunderstorm') ||
-              category.includes('flood') || 
-              category.includes('hilly') || category.includes('steep terrain') ||
-              category.includes('landslide') || 
-              category.includes('forest fire') || 
-              category.includes('restricted') || category.includes('no-entry') ||
-              category.includes('wildlife') || category.includes('protected') ||
-              category.includes('danger') || category.includes('red') || category.includes('hazard') ||
-              name.includes('restricted') || name.includes('red') || name.includes('danger') || name.includes('hazard') ||
-              rl.includes('high') || rl.includes('danger') || rl.includes('red') || rl.includes('severe');
+            // Check if it's a danger zone, restricted area, or hazard zone that needs immediate siren & vibration
+            const isRedOrRestricted = isRedOrRestrictedZone(fence);
 
             if (isRedOrRestricted) {
               try {
                 triggerSirenAlert(
-                  `🚨 RESTRICTED / RED ZONE: ${fence.name}`,
-                  `WARNING: You entered a restricted or dangerous red zone (${fence.category || 'Red Zone'}). Emergency siren and 3-second vibration activated!`
+                  `🚨 DANGER / RESTRICTED ZONE: ${fence.name}`,
+                  `WARNING: You entered an active danger zone (${fence.category || fence.name || 'Danger Area'}). Emergency siren and continuous vibration activated!`,
+                  { zoneId: fence.id, zoneName: fence.name }
                 );
               } catch (e) {
-                /* ignore */
+                console.warn("[AppContext] triggerSirenAlert error:", e);
               }
             } else if (rl.includes("high") || rl.includes("medium")) {
               // Start progressive alert escalation for sustained presence
@@ -624,27 +628,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
 
         geofenceService.on("approaching", ({ fence, location }) => {
-          try {
-            const rl = (fence.riskLevel || "").toString().toLowerCase();
-            const category = (fence.category || "").toLowerCase();
-            const name = (fence.name || "").toLowerCase();
-            const isRedOrRestricted = 
-              category.includes('lightning') || category.includes('thunderstorm') ||
-              category.includes('flood') || 
-              category.includes('hilly') || category.includes('steep terrain') ||
-              category.includes('landslide') || 
-              category.includes('forest fire') || 
-              category.includes('restricted') || category.includes('no-entry') ||
-              category.includes('wildlife') || category.includes('protected') ||
-              category.includes('danger') || category.includes('red') || category.includes('hazard') ||
-              name.includes('restricted') || name.includes('red') || name.includes('danger') || name.includes('hazard') ||
-              rl.includes('high') || rl.includes('danger') || rl.includes('red');
+          // Strictly ignore if user is unauthenticated or logged out
+          if (!stateRef.current.user || !stateRef.current.token) return;
 
+          try {
+            const isRedOrRestricted = isRedOrRestrictedZone(fence);
             if (isRedOrRestricted) {
-              triggerSirenAlert(
-                `⚠️ APPROACHING RED / RESTRICTED ZONE`,
-                `Caution: You are approaching a dangerous or restricted region: ${fence.name} (${fence.category || 'Red Zone'})`
-              );
+              showToast(`⚠️ Approaching restricted zone: ${fence.name}`);
             }
           } catch (e) {
             /* ignore */
@@ -652,6 +642,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
 
         geofenceService.on("exit", ({ fence, location }) => {
+          // Strictly ignore if user is unauthenticated or logged out
+          if (!stateRef.current.user || !stateRef.current.token) return;
           try {
             showToast(`Exited: ${fence.name} (${fence.category || "zone"})`);
           } catch (e) {
@@ -668,6 +660,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             stopProgressiveAlert();
           } catch (e) {
             /* ignore */
+          }
+
+          // When moving out of a restricted / red zone, automatically turn off the siren and the pop-up
+          try {
+            const isRedOrRestricted = isRedOrRestrictedZone(fence);
+            if (isRedOrRestricted) {
+              const remaining = typeof (geofenceService as any).getActiveRestrictedFences === 'function'
+                ? (geofenceService as any).getActiveRestrictedFences()
+                : [];
+              if (remaining.length === 0) {
+                console.log(`[AppContext] 🟢 Exited restricted zone (${fence.name}), auto-turning off siren and pop-up!`);
+                exitRestrictedZone(fence.id);
+              }
+            }
+          } catch (e) {
+            console.warn("[AppContext] exitRestrictedZone error:", e);
           }
           try {
             appendTransition({
@@ -756,7 +764,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (syncInterval) clearInterval(syncInterval);
       } catch (e) {}
     };
-  }, [hydrated, state.token]);
+  }, [hydrated, (state.user as any)?.touristId]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -816,6 +824,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
+
+        // Broadcast live location to authority dashboard via socket
+        try {
+          touristSocketService.updateLocation({
+            lat: location.coords.latitude,
+            lng: location.coords.longitude,
+            accuracy: location.coords.accuracy,
+            speed: location.coords.speed,
+            heading: location.coords.heading,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (sockErr) {
+          console.warn("[SafetyTracking] Socket updateLocation failed:", sockErr);
+        }
 
         const response = await sendSafetyLocationUpdate({
           userId: String(userId),
@@ -921,12 +943,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       userId,
     );
 
-    // Connect the socket service!
-    touristSocketService.connect(
-      userAny.touristId || userAny._id || userAny.vehicleId || "T001", 
-      { lat: 0, lng: 0 }, 
-      userAny.role || "tourist"
-    );
+    // Connect the socket service with real cached position if available
+    Location.getLastKnownPositionAsync()
+      .then((loc) => {
+        const initialLoc = (loc?.coords && loc.coords.latitude !== 0)
+          ? { lat: loc.coords.latitude, lng: loc.coords.longitude }
+          : { lat: 0, lng: 0 };
+        touristSocketService.connect(
+          userAny.touristId || userAny._id || userAny.vehicleId || "T001",
+          initialLoc,
+          userAny.role || "tourist"
+        );
+      })
+      .catch(() => {
+        touristSocketService.connect(
+          userAny.touristId || userAny._id || userAny.vehicleId || "T001",
+          { lat: 0, lng: 0 },
+          userAny.role || "tourist"
+        );
+      });
 
     // Subscribe to globally forwarded safety score updates
     const unsubscribe = touristSocketService.on(
@@ -952,9 +987,95 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       },
     );
 
+    const handleZoneUpdate = async (zoneData: any) => {
+      if (!stateRef.current.user || !stateRef.current.token) return;
+      console.log("[AppContext] 🚨 Danger zone event received via socket:", zoneData);
+      try {
+        const userId = (state.user as any)?.touristId;
+        const fresh = await geofenceService.loadFences(undefined, undefined, userId, true);
+        console.log("[AppContext] ✅ Geofences reloaded fresh into real-time monitoring engine, count:", fresh.length);
+
+        // Immediate location evaluation on new danger zone
+        const checkCoords = (lat: number, lng: number) => {
+          if (!stateRef.current.user || !stateRef.current.token) return;
+          geofenceService.evaluateUserLocation({ latitude: lat, longitude: lng });
+
+          // Direct distance check to newly added zone
+          const zCoords = zoneData?.coords || zoneData?.coordinates;
+          if (Array.isArray(zCoords) && zCoords.length === 2) {
+            const zLat = Number(zCoords[0]);
+            const zLng = Number(zCoords[1]);
+            const rKm = Number(zoneData.radiusKm) || (zoneData.radius ? zoneData.radius / 1000 : 1);
+            const { haversineKm } = require("../utils/geofenceLogic");
+            const dist = haversineKm([lat, lng], [zLat, zLng]);
+            if (dist <= rKm) {
+              console.log(`🚨 [AppContext] Tourist is INSIDE newly created danger zone (${dist.toFixed(2)}km <= ${rKm}km)! Triggering siren!`);
+              triggerSirenAlert(
+                `🚨 DANGER ZONE: ${zoneData.name || 'RESTRICTED AREA'}`,
+                `WARNING: You are inside an active danger zone (${zoneData.category || zoneData.name || 'Danger Area'}). Emergency siren activated!`
+              );
+            }
+          }
+        };
+
+        Location.getLastKnownPositionAsync().then((loc) => {
+          if (loc?.coords) {
+            checkCoords(loc.coords.latitude, loc.coords.longitude);
+          } else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => checkCoords(pos.coords.latitude, pos.coords.longitude),
+              () => {},
+              { timeout: 5000, maximumAge: 10000 }
+            );
+          }
+        }).catch(() => {});
+      } catch (err) {
+        console.warn("[AppContext] Failed to reload geofences on socket event:", err);
+      }
+    };
+
+    const handleBackendZoneWarning = (warning: any) => {
+      if (!stateRef.current.user || !stateRef.current.token) return;
+      console.log("[AppContext] 🚨 Direct restrictedZoneWarning from server:", warning);
+      if (warning?.isInside !== false) {
+        triggerSirenAlert(
+          `🚨 DANGER ZONE: ${warning?.zoneName || 'RESTRICTED AREA'}`,
+          warning?.message || 'WARNING: You are inside an active danger zone!',
+          { zoneId: warning?.zoneId || warning?.zoneName, zoneName: warning?.zoneName }
+        );
+      } else {
+        exitRestrictedZone(warning?.zoneName);
+      }
+    };
+
+    const handleBackendTransition = (trans: any) => {
+      if (!stateRef.current.user || !stateRef.current.token) return;
+      console.log("[AppContext] 🔄 Direct geofenceTransition from server:", trans);
+      if (trans?.event === 'ENTER') {
+        triggerSirenAlert(
+          `🚨 ENTERED DANGER ZONE: ${trans?.zone || 'RESTRICTED AREA'}`,
+          trans?.alertMessage || 'WARNING: You entered an active danger zone!',
+          { zoneId: trans?.zoneId || trans?.zone, zoneName: trans?.zone }
+        );
+      } else if (trans?.event === 'EXIT') {
+        exitRestrictedZone(trans?.zone);
+      }
+    };
+
+    const unsubDangerAdded = touristSocketService.on("dangerZoneAdded", handleZoneUpdate);
+    const unsubDangerRemoved = touristSocketService.on("dangerZoneRemoved", handleZoneUpdate);
+    const unsubMapUpdated = touristSocketService.on("mapDataUpdated", handleZoneUpdate);
+    const unsubRestrictedWarning = touristSocketService.on("restrictedZoneWarning", handleBackendZoneWarning);
+    const unsubGeofenceTrans = touristSocketService.on("geofenceTransition", handleBackendTransition);
+
     return () => {
-      console.log("[AppContext] Cleaning up safety score listener");
+      console.log("[AppContext] Cleaning up safety score and zone listeners");
       if (unsubscribe) unsubscribe();
+      if (unsubDangerAdded) unsubDangerAdded();
+      if (unsubDangerRemoved) unsubDangerRemoved();
+      if (unsubMapUpdated) unsubMapUpdated();
+      if (unsubRestrictedWarning) unsubRestrictedWarning();
+      if (unsubGeofenceTrans) unsubGeofenceTrans();
     };
   }, [hydrated, (state.user as any)?.touristId, (state.user as any)?.vehicleId, (state.user as any)?._id, state.user?.role]);
 
@@ -1324,8 +1445,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       },
       async logout() {
-        // Stop any active siren and geofence monitoring before clearing state
-        try { stopSirenAlert(); } catch (e) {}
+        // Stop any active siren, exit danger zone, and stop geofence monitoring
+        setSirenAuthStatus(false);
+        try { await exitRestrictedZone(); } catch (e) {}
+        try { await stopSirenAlert(); } catch (e) {}
         try { geofenceService.stopMonitoring(); } catch (e) {}
         touristSocketService.disconnect();
         await remove(STORAGE_KEY);

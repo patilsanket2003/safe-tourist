@@ -23,7 +23,7 @@ const handleResponse = async (response) => {
       });
     } catch (e) {}
 
-    if (data && data.message) throw new Error(data.message);
+    if (data && (data.message || data.error)) throw new Error(data.message || data.error);
     throw new Error(`Server responded with status ${response.status}`);
   } catch (e: any) {
     // If parsing fails or other unexpected error
@@ -654,4 +654,251 @@ export const sendWelcomeEmailsToAll = async (token) => {
     throw e;
   }
 };
+
+// ==========================================
+// FAMILY & PARENTAL CIRCLE APIs
+// ==========================================
+
+export const searchFamilyMemberByEmail = async (token: string, email: string) => {
+  try {
+    const encoded = encodeURIComponent(email.trim());
+    const response = await fetch(`${SERVER_URL}/api/family/search?email=${encoded}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: searchFamilyMemberByEmail error", e);
+    throw e;
+  }
+};
+
+export const getFamilyMembers = async (token: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/family/members`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getFamilyMembers error", e);
+    throw e;
+  }
+};
+
+export const addFamilyMember = async (token: string, email: string, relationship?: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/family/add-member`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ email: email.trim(), relationship }),
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: addFamilyMember error", e);
+    throw e;
+  }
+};
+
+export const removeFamilyMember = async (token: string, memberTouristId: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/family/remove-member/${memberTouristId}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: removeFamilyMember error", e);
+    throw e;
+  }
+};
+
+export const setLiveLocationSharing = async (
+  token: string,
+  recipientTouristIds: string[],
+  active: boolean
+) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/family/share-location`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ recipientTouristIds, active }),
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: setLiveLocationSharing error", e);
+    throw e;
+  }
+};
+
+export const getActiveSharedLocationsWithMe = async (token: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/family/active-shared-with-me`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getActiveSharedLocationsWithMe error", e);
+    throw e;
+  }
+};
+
+// ==============================================================================
+// EXPLORE INDIA API HELPERS
+// ==============================================================================
+
+export const getExploreCategories = async () => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/categories`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExploreCategories error", e);
+    throw e;
+  }
+};
+
+export const getExploreStates = async () => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/states`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExploreStates error", e);
+    throw e;
+  }
+};
+
+export const getExploreCitiesByCategory = async (
+  categoryId: string,
+  params: { search?: string; stateId?: string; sort?: string; page?: number; limit?: number } = {}
+) => {
+  try {
+    const query = new URLSearchParams();
+    if (params.search) query.append("search", params.search);
+    if (params.stateId) query.append("stateId", params.stateId);
+    if (params.sort) query.append("sort", params.sort);
+    if (params.page) query.append("page", String(params.page));
+    if (params.limit) query.append("limit", String(params.limit));
+
+    const response = await fetch(`${SERVER_URL}/api/explore/categories/${categoryId}/cities?${query.toString()}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExploreCitiesByCategory error", e);
+    throw e;
+  }
+};
+
+export const getExploreCitiesByState = async (
+  stateId: string,
+  params: { category?: string; search?: string; sort?: string; page?: number; limit?: number } = {}
+) => {
+  try {
+    const query = new URLSearchParams();
+    if (params.category) query.append("category", params.category);
+    if (params.search) query.append("search", params.search);
+    if (params.sort) query.append("sort", params.sort);
+    if (params.page) query.append("page", String(params.page));
+    if (params.limit) query.append("limit", String(params.limit));
+
+    const response = await fetch(`${SERVER_URL}/api/explore/states/${stateId}/cities?${query.toString()}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExploreCitiesByState error", e);
+    throw e;
+  }
+};
+
+export const getExploreCityDetails = async (cityId: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/cities/${cityId}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExploreCityDetails error", e);
+    throw e;
+  }
+};
+
+export const getExplorePlacesByCity = async (
+  cityId: string,
+  params: { category?: string; subCategory?: string; search?: string; sort?: string; page?: number; limit?: number } = {}
+) => {
+  try {
+    const query = new URLSearchParams();
+    if (params.category) query.append("category", params.category);
+    if (params.subCategory) query.append("subCategory", params.subCategory);
+    if (params.search) query.append("search", params.search);
+    if (params.sort) query.append("sort", params.sort);
+    if (params.page) query.append("page", String(params.page));
+    if (params.limit) query.append("limit", String(params.limit));
+
+    const response = await fetch(`${SERVER_URL}/api/explore/cities/${cityId}/places?${query.toString()}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExplorePlacesByCity error", e);
+    throw e;
+  }
+};
+
+export const getExplorePlaceDetails = async (placeId: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/places/${placeId}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExplorePlaceDetails error", e);
+    throw e;
+  }
+};
+
+export const getExploreNearby = async (lat: number, lng: number, radiusMeters: number = 25000) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/nearby?lat=${lat}&lng=${lng}&radius=${radiusMeters}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: getExploreNearby error", e);
+    throw e;
+  }
+};
+
+export const searchExplore = async (queryStr: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/search?q=${encodeURIComponent(queryStr)}`);
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: searchExplore error", e);
+    throw e;
+  }
+};
+
+export const syncCityLiveAttractions = async (cityId: string) => {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/explore/cities/${cityId}/sync-live`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    return await handleResponse(response);
+  } catch (e: any) {
+    console.error("API: syncCityLiveAttractions error", e);
+    throw e;
+  }
+};
+
+
 

@@ -1,5 +1,5 @@
 import { API_BASE_URL, PATH_DEVIATION_API_BASE_URL } from "../config";
-const API_BASE = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
+const API_BASE = API_BASE_URL;
 const PATH_DEVIATION_API_BASE =
   import.meta.env.VITE_PATH_DEVIATION_API_BASE || PATH_DEVIATION_API_BASE_URL;
 
@@ -10,6 +10,8 @@ console.info(
 
 export interface MapStats {
   totalTourists: number;
+  activeTourists?: number;
+  inactiveTourists?: number;
   activeAlerts: number;
   highRiskZones: number;
   responseUnits: number;
@@ -33,7 +35,8 @@ export interface MapTourist {
       activityDetails?: string;
     }>;
   }>;
-  status: "active" | "expired";
+  status: "active" | "inactive" | "expired";
+  isOnline?: boolean;
   safetyScore: number;
   location: { lat: number; lng: number };
   type: "tourist";
@@ -357,6 +360,34 @@ export async function createDangerZone(
   if (!res.ok || json?.success === false) {
     throw new Error(
       json?.message || `Failed to create danger zone: ${res.status}`,
+    );
+  }
+
+  return json;
+}
+
+export async function deleteDangerZone(
+  zoneId: string,
+): Promise<{ success: boolean; message?: string; data?: any }> {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = {};
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}/api/authority/map/danger-zone/${encodeURIComponent(zoneId)}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  const json = await res
+    .json()
+    .catch(() => ({ success: false, message: "Invalid response" }));
+
+  if (!res.ok || json?.success === false) {
+    throw new Error(
+      json?.message || `Failed to delete danger zone: ${res.status}`,
     );
   }
 

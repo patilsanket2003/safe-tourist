@@ -458,6 +458,12 @@ async function calculateSafetyScore(lat, lng) {
     // Start with base score and subtract penalties
     let finalScore = CONFIG.BASE_SCORE - totalPenalty;
     
+    // If tourist is physically inside any active danger zone, cap score at 20 (Critical risk)
+    const isInsideDangerZone = threats.some(t => t.type === 'danger_zone' && t.isInside);
+    if (isInsideDangerZone) {
+      finalScore = Math.min(finalScore, 20);
+    }
+
     // Ensure score is within bounds
     finalScore = Math.max(0, Math.min(100, finalScore));
     finalScore = Math.round(finalScore);

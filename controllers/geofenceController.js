@@ -93,12 +93,24 @@ exports.createGeoFenceToDangerLocation = async (req, res, next) => {
     const zonePayload = {
       id: dangerZone.id || dangerZone._id,
       name: dangerZone.name,
-      riskLevel: dangerZone.riskLevel,
+      category: dangerZone.category || 'Danger Zone',
+      riskLevel: dangerZone.riskLevel || 'High',
       type: 'zone',
-      shape: dangerZone.type,
+      shape: dangerZone.type || 'circle',
+      coords: dangerZone.coords,
       coordinates: dangerZone.coords,
-      radius: dangerZone.radiusKm ? dangerZone.radiusKm * 1000 : 0,
-      visualStyle: dangerZone.visualStyle || null,
+      radiusKm: dangerZone.radiusKm || 1,
+      radius: dangerZone.radiusKm ? dangerZone.radiusKm * 1000 : 1000,
+      source: dangerZone.source || 'Authority Manual Entry',
+      visualStyle: dangerZone.visualStyle || {
+        zoneType: "danger_zone",
+        borderStyle: "solid",
+        borderWidth: 3,
+        fillOpacity: 0.25,
+        fillPattern: "diagonal-stripes",
+        iconType: "warning-triangle",
+        renderPriority: 1
+      },
       createdAt: dangerZone.createdAt,
     };
 
@@ -143,6 +155,59 @@ exports.getZonebyId = async (req, res, next) => {
     next(err);
   }
 }
+
+exports.deleteDangerZone = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Danger zone ID is required' });
+    }
+
+    const mongoose = require('mongoose');
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const query = isObjectId
+      ? { $or: [{ id: id }, { _id: id }] }
+      : { id: id };
+
+    const deletedZone = await DangerZone.findOneAndDelete(query);
+    if (!deletedZone) {
+      return res.status(404).json({ success: false, message: 'Danger zone not found' });
+    }
+
+    const realtimeService = require('../services/realtimeService');
+    const zoneIdentifier = deletedZone.id || String(deletedZone._id);
+
+    if (realtimeService && typeof realtimeService.emitDangerZoneRemoved === 'function') {
+      realtimeService.emitDangerZoneRemoved({
+        id: zoneIdentifier,
+        _id: String(deletedZone._id),
+        name: deletedZone.name,
+      }).catch(err => console.error("Socket emit error:", err));
+    }
+
+    if (realtimeService && typeof realtimeService.emitMapDataUpdated === 'function') {
+      realtimeService.emitMapDataUpdated({
+        eventType: 'danger-zone-removed',
+        zoneId: zoneIdentifier,
+        _id: String(deletedZone._id),
+        name: deletedZone.name,
+      }).catch(err => console.error("Socket emit error:", err));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Danger zone removed successfully',
+      data: {
+        id: zoneIdentifier,
+        _id: deletedZone._id,
+        name: deletedZone.name,
+      },
+    });
+  } catch (err) {
+    console.error("Error deleting danger zone:", err);
+    next(err);
+  }
+};
 
 exports.getHighRiskZoneCount = async (req, res, next) => {
   try {

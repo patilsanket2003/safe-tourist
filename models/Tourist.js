@@ -64,8 +64,25 @@ const TouristSchema = new mongoose.Schema({
     dataRetention: { type: Boolean, default: true },
     emergencySharing: { type: Boolean, default: true },
   },
+  // Family & Trusted Circle for Parental Safety & Live Sharing
+  familyCircle: [
+    {
+      memberTouristId: { type: String, required: true },
+      name: { type: String, required: true },
+      email: { type: String, required: true },
+      phone: { type: String },
+      relationship: { type: String, default: "Family" }, // Parent, Friend, Guardian, Sibling, etc.
+      isSharingWith: { type: Boolean, default: false },
+      addedAt: { type: Date, default: Date.now },
+    },
+  ],
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date }, // end of trip
+  lastKnownLocation: {
+    lat: { type: Number },
+    lng: { type: Number },
+    updatedAt: { type: Date, default: Date.now },
+  },
   audit: {
     regHash: { type: String }, // SHA256 hash that was written to blockchain
     regTxHash: { type: String }, // blockchain tx hash

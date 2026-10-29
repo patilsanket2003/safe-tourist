@@ -173,13 +173,18 @@ export default function SettingsScreen() {
 
           <View style={styles.profileActions}>
             <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('PersonalInfo')}>
-              <Edit size={18} color="#3B82F6" />
+              <Edit size={16} color="#3B82F6" />
               <Text style={styles.actionButtonText}>Edit Profile</Text>
             </TouchableOpacity>
             <View style={styles.actionDivider} />
             <TouchableOpacity style={styles.actionButton} onPress={handleOpenQr}>
-              <QrCode size={18} color="#3B82F6" />
+              <QrCode size={16} color="#3B82F6" />
               <Text style={styles.actionButtonText}>My QR</Text>
+            </TouchableOpacity>
+            <View style={styles.actionDivider} />
+            <TouchableOpacity style={styles.actionButton} onPress={logout}>
+              <LogOut size={16} color="#EF4444" />
+              <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>Log Out</Text>
             </TouchableOpacity>
           </View>
         </View>

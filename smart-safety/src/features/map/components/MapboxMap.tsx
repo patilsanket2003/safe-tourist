@@ -28,7 +28,7 @@ import {
 // Import types, constants and utilities
 import { WebViewMessage } from './MapboxMap/types';
 import { reverseGeocode } from './MapboxMap/geoUtils';
-import { GeoFence, filterFencesByDistance, haversineKm } from '../../../utils/geofenceLogic';
+import { GeoFence, filterFencesByDistance, haversineKm, isMilitaryZone } from '../../../utils/geofenceLogic';
 
 const NEARBY_FENCE_RADIUS_KM = 20000;
 const LOCATION_REFILTER_THRESHOLD_KM = 5;
@@ -78,6 +78,8 @@ export default function MapboxMap({
   const [showWarningBanner, setShowWarningBanner] = useState(true);
   const [showStyleSelector, setShowStyleSelector] = useState(false);
   const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  const [showHazards, setShowHazards] = useState(true);
+  const [showMilitaryZones, setShowMilitaryZones] = useState(false);
 
   // Legend statistics
   const [dangerZoneCount, setDangerZoneCount] = useState(0);
@@ -295,8 +297,14 @@ export default function MapboxMap({
   useEffect(() => {
     if (!webViewRef.current || !mapReady) return;
 
-    const fencesToSend = geoFences || loadedGeoFences;
-    if (!Array.isArray(fencesToSend)) return;
+    const baseFences = geoFences || loadedGeoFences;
+    if (!Array.isArray(baseFences)) return;
+
+    const fencesToSend = baseFences.filter((f) => {
+      const isMil = isMilitaryZone(f);
+      if (isMil) return showMilitaryZones;
+      return showHazards;
+    });
 
     try {
       console.log(`Sending ${fencesToSend.length} geo-fences to Mapbox WebView, including custom fences:`,
@@ -305,7 +313,7 @@ export default function MapboxMap({
     } catch (e) {
       console.warn('Failed to post geo-fences to Mapbox WebView', e);
     }
-  }, [mapReady, geoFences, loadedGeoFences]);
+  }, [mapReady, geoFences, loadedGeoFences, showHazards, showMilitaryZones]);
 
   // Calculate legend statistics whenever geofences change
   useEffect(() => {
@@ -611,6 +619,10 @@ export default function MapboxMap({
               setIsBottomSheetExpanded(false);
               setIsLegendExpanded(prev => !prev);
             }}
+            showHazards={showHazards}
+            onToggleHazards={() => setShowHazards(prev => !prev)}
+            showMilitaryZones={showMilitaryZones}
+            onToggleMilitary={() => setShowMilitaryZones(prev => !prev)}
           />
 
           {showStyleSelector && (

@@ -81,9 +81,12 @@ app.get("/", (req, res) => {
 });
 
 const hazardRoutes = require("./routes/hazardRoutes");
+const familyRoutes = require("./routes/familyRoutes");
+const exploreRoutes = require("./routes/exploreRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tourist", touristRoutes);
+app.use("/api/family", familyRoutes);
 app.use("/api/group", tourGroupRoutes);
 app.use("/api/group/members", groupMemberRoutes);
 app.use("/api/authority", authorityRoutes);
@@ -91,6 +94,7 @@ app.use("/api/geofence", geofenceRoutes);
 app.use("/api/sos", sosRoutes);
 app.use("/api/incidents", incidentRoutes);
 app.use("/api/itinerary", itineraryRoutes);
+app.use("/api/explore", exploreRoutes);
 app.use("/api/ai/damini", daminiRoutes);
 app.use("/api/hazards", hazardRoutes);
 app.get('/count', getSosCounts);

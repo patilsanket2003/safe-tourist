@@ -8,6 +8,7 @@ import React, {
 import Map, {
   Source,
   Layer,
+  Popup,
   NavigationControl,
   FullscreenControl,
   ScaleControl,
@@ -25,9 +26,18 @@ import {
   MapPin,
   Wifi,
   WifiOff,
+  Trash2,
+  Search,
+  Shield,
 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import * as maplibregl from "maplibre-gl";
+
+// Ensure MapLibre Web Worker loads correctly in Vite production bundle & SPA
+if (typeof window !== "undefined") {
+  (maplibregl as any).config.WORKER_URL = `${window.location.origin}/maplibre-gl-worker.mjs`;
+}
+
 import {
   fetchMapOverview,
   MapOverviewResponse,
@@ -37,6 +47,7 @@ import {
   RiskGrid,
   fetchLatestSafetyUsers,
   createDangerZone,
+  deleteDangerZone,
 } from "../api/map";
 import {
   onAuthorityEvent,
@@ -59,7 +70,7 @@ const DEFAULT_MAP_STYLE =
     ? "mapbox://styles/mapbox/outdoors-v12"
     : {
         version: 8 as const,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         sources: {
           "osm-tiles": {
             type: "raster" as const,
@@ -110,8 +121,40 @@ type LayerVisibility = {
   sos: boolean;
   incidents: boolean;
   zones: boolean;
+  militaryZones: boolean;
   activeTourists: boolean;
   inactiveTourists: boolean;
+};
+
+export const isMilitaryZone = (zone: any): boolean => {
+  if (!zone) return false;
+  const text = [
+    zone.name,
+    zone.category,
+    zone.source,
+    zone.visualStyle?.zoneType,
+    zone.raw?.Category,
+    zone.raw?.Source,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    text.includes("military") ||
+    text.includes("airbase") ||
+    text.includes("air force") ||
+    text.includes("cantonment") ||
+    text.includes("airstrip") ||
+    text.includes("army") ||
+    text.includes("navy") ||
+    text.includes("naval") ||
+    text.includes("defense") ||
+    text.includes("defence") ||
+    text.includes("siachen") ||
+    text.includes("daulat beg") ||
+    text.includes("point 5353")
+  );
 };
 
 type DangerZoneFormState = {
@@ -142,14 +185,20 @@ const TouristMap: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
 
   const [layers, setLayers] = useState<LayerVisibility>({
-    sos: true,
-    incidents: true,
-    zones: true,
+    sos: false,
+    incidents: false,
+    zones: false,
+    militaryZones: false,
     activeTourists: true,
-    inactiveTourists: true,
+    inactiveTourists: false,
   });
 
   const [isAddZoneOpen, setIsAddZoneOpen] = useState(false);
+  const [isManageZonesOpen, setIsManageZonesOpen] = useState(false);
+  const [isDeletingZoneId, setIsDeletingZoneId] = useState<string | null>(null);
+  const [confirmingZoneId, setConfirmingZoneId] = useState<string | null>(null);
+  const [zoneSearchQuery, setZoneSearchQuery] = useState("");
+  const [zoneTypeFilter, setZoneTypeFilter] = useState<"all" | "civilian" | "military">("all");
   const [isSubmittingZone, setIsSubmittingZone] = useState(false);
   const [addZoneError, setAddZoneError] = useState<string | null>(null);
   const [dangerZoneForm, setDangerZoneForm] = useState<DangerZoneFormState>({
@@ -167,6 +216,12 @@ const TouristMap: React.FC = () => {
   const mapRef = useRef<MapRef>(null);
   const prevConnectionRef = useRef<boolean>(false);
   const hasAutoFitTouristsRef = useRef<boolean>(false);
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  const onMapLoad = useCallback(() => {
+    setIsMapReady(true);
+  }, []);
+
 
   const mergeSafetyUsers = useCallback(
     (
@@ -659,6 +714,9 @@ const TouristMap: React.FC = () => {
           });
         }
 
+        const activeCount = updatedTourists.filter((t) => t.status === "active").length;
+        const inactiveCount = updatedTourists.filter((t) => t.status !== "active").length;
+
         return {
           ...base,
           stats: {
@@ -667,9 +725,49 @@ const TouristMap: React.FC = () => {
               base.stats.totalTourists,
               updatedTourists.length,
             ),
+            activeTourists: activeCount,
+            inactiveTourists: inactiveCount,
           },
           mapData: {
             ...base.mapData,
+            tourists: updatedTourists,
+          },
+        };
+      });
+    };
+
+    // Real-time Tourist Online / Offline Status Changed Listener
+    const handleTouristStatusChanged = (statusData: any) => {
+      const touristId = String(statusData?.touristId || statusData?.id || "");
+      if (!touristId) return;
+      console.log("🔄 [Map] Tourist status changed:", touristId, statusData.status);
+
+      setData((prev) => {
+        if (!prev) return prev;
+        const updatedTourists = prev.mapData.tourists.map((t) => {
+          if (String(t.id) === touristId) {
+            return {
+              ...t,
+              status: (statusData.status === "active" ? "active" : "inactive") as any,
+              isOnline: Boolean(statusData.isOnline),
+              location: statusData.location || t.location,
+            };
+          }
+          return t;
+        });
+
+        const activeCount = updatedTourists.filter((t) => t.status === "active").length;
+        const inactiveCount = updatedTourists.filter((t) => t.status !== "active").length;
+
+        return {
+          ...prev,
+          stats: {
+            ...prev.stats,
+            activeTourists: activeCount,
+            inactiveTourists: inactiveCount,
+          },
+          mapData: {
+            ...prev.mapData,
             tourists: updatedTourists,
           },
         };
@@ -714,10 +812,34 @@ const TouristMap: React.FC = () => {
       });
     };
 
+    // Real-time Danger Zone Removed Listener
+    const handleDangerZoneRemoved = (zoneData: any) => {
+      const removedId = zoneData?.id || zoneData?._id || zoneData;
+      console.log("🗑️ [Map] Danger Zone Removed:", removedId);
+      showToast(`🗑️ Danger zone removed: ${zoneData?.name || removedId}`, "info");
+
+      setStyledZones((prevZones) => {
+        if (!prevZones) return null;
+        return {
+          ...prevZones,
+          dangerZones: prevZones.dangerZones.filter(
+            (z) => z._id !== removedId && (z as any).id !== removedId
+          ),
+        };
+      });
+
+      setSelectedEntity((prev) => {
+        if (prev?.id === removedId) return null;
+        return prev;
+      });
+    };
+
     onAuthorityEvent("riskGridUpdated", handleRiskGridUpdate);
     onAuthorityEvent("incidentReported", handleIncidentReported);
     onAuthorityEvent("dangerZoneAdded", handleDangerZoneAdded);
+    onAuthorityEvent("dangerZoneRemoved", handleDangerZoneRemoved);
     onAuthorityEvent("locationUpdate", handleLocationUpdate);
+    onAuthorityEvent("touristStatusChanged", handleTouristStatusChanged);
 
     return () => {
       clearTimeout(earlyPollTimer);
@@ -727,7 +849,9 @@ const TouristMap: React.FC = () => {
       offAuthorityEvent("riskGridUpdated", handleRiskGridUpdate);
       offAuthorityEvent("incidentReported", handleIncidentReported);
       offAuthorityEvent("dangerZoneAdded", handleDangerZoneAdded);
+      offAuthorityEvent("dangerZoneRemoved", handleDangerZoneRemoved);
       offAuthorityEvent("locationUpdate", handleLocationUpdate);
+      offAuthorityEvent("touristStatusChanged", handleTouristStatusChanged);
     };
   }, [mergeSafetyUsers]);
 
@@ -799,6 +923,53 @@ const TouristMap: React.FC = () => {
     }
   };
 
+  const handleDeleteDangerZone = async (
+    zoneId: string,
+    zoneName?: string,
+  ) => {
+    const displayName = zoneName || zoneId;
+    setIsDeletingZoneId(zoneId);
+    setConfirmingZoneId(null);
+    try {
+      await deleteDangerZone(zoneId);
+      showToast(`🗑️ Danger zone "${displayName}" removed successfully`, "success");
+
+      setStyledZones((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          dangerZones: prev.dangerZones.filter(
+            (z) => z._id !== zoneId && (z as any).id !== zoneId,
+          ),
+        };
+      });
+
+      setSelectedEntity((prev) => {
+        if (prev?.id === zoneId) return null;
+        return prev;
+      });
+    } catch (err: any) {
+      console.error("Failed to delete danger zone:", err);
+      showToast(err.message || "Failed to remove danger zone", "error");
+    } finally {
+      setIsDeletingZoneId(null);
+    }
+  };
+
+  const handleFlyToZone = (zone: DangerZone) => {
+    if (!mapRef.current) return;
+    const coords = zone.coords;
+    if (coords && coords.length === 2) {
+      mapRef.current.flyTo({
+        center: [coords[1], coords[0]],
+        zoom: 14,
+        essential: true,
+      });
+      setSelectedEntity({ id: zone._id || (zone as any).id, type: "danger" });
+      setIsManageZonesOpen(false);
+    }
+  };
+
   // -- GeoJSON Transformations --
 
   const EMPTY_FC = useMemo(
@@ -814,6 +985,8 @@ const TouristMap: React.FC = () => {
       return (
         Number.isFinite(lat) &&
         Number.isFinite(lng) &&
+        !(lat === 0 && lng === 0) &&
+        !(Math.abs(lat - 19.0760) < 0.001 && Math.abs(lng - 72.8777) < 0.001) &&
         lat >= -90 &&
         lat <= 90 &&
         lng >= -180 &&
@@ -846,6 +1019,7 @@ const TouristMap: React.FC = () => {
   }, [data]);
 
   useEffect(() => {
+    if (!isMapReady) return;
     if (!data?.mapData?.tourists?.length) return;
     if (hasAutoFitTouristsRef.current) return;
     const map = mapRef.current?.getMap?.();
@@ -881,7 +1055,8 @@ const TouristMap: React.FC = () => {
       duration: 800,
     });
     hasAutoFitTouristsRef.current = true;
-  }, [data]);
+  }, [data, isMapReady]);
+
 
   const alertSource = useMemo(() => {
     if (!data) return null;
@@ -965,9 +1140,20 @@ const TouristMap: React.FC = () => {
   // Danger Zones Source (solid borders, diagonal stripes pattern)
   const dangerZoneSource = useMemo(() => {
     if (!styledZones || !styledZones.dangerZones) return null;
+
+    // Filter zones based on layer toggles
+    const visibleZones = styledZones.dangerZones.filter((z) => {
+      const isMil = isMilitaryZone(z);
+      if (isMil) {
+        return layers.militaryZones;
+      }
+      return layers.zones;
+    });
+
     return {
       type: "FeatureCollection",
-      features: styledZones.dangerZones.map((z) => {
+      features: visibleZones.map((z) => {
+        const isMil = isMilitaryZone(z);
         // Calculate radius in KM
         const radiusKm =
           z.radiusKm || getRadiusForRiskLevel(z.riskLevel) / 1000;
@@ -977,18 +1163,19 @@ const TouristMap: React.FC = () => {
           return {
             type: "Feature",
             properties: {
-              id: z._id,
+              id: z._id || (z as any).id,
               type: "danger",
-              zoneType: "danger_zone",
+              zoneType: isMil ? "military_zone" : "danger_zone",
+              isMilitary: isMil,
               riskLevel: z.riskLevel,
               name: z.name,
               category: z.category,
               state: z.state,
               radius: radiusKm * 1000,
-              borderStyle: z.visualStyle.borderStyle,
-              borderWidth: z.visualStyle.borderWidth,
-              fillOpacity: z.visualStyle.fillOpacity,
-              fillPattern: z.visualStyle.fillPattern, // Pass pattern name
+              borderStyle: z.visualStyle?.borderStyle || "solid",
+              borderWidth: z.visualStyle?.borderWidth || 3,
+              fillOpacity: z.visualStyle?.fillOpacity || 0.25,
+              fillPattern: z.visualStyle?.fillPattern || "diagonal-stripes",
             },
             geometry: {
               type: "Polygon",
@@ -1007,18 +1194,19 @@ const TouristMap: React.FC = () => {
         return {
           type: "Feature",
           properties: {
-            id: z._id,
+            id: z._id || (z as any).id,
             type: "danger",
-            zoneType: "danger_zone",
+            zoneType: isMil ? "military_zone" : "danger_zone",
+            isMilitary: isMil,
             riskLevel: z.riskLevel,
             name: z.name,
             category: z.category,
             state: z.state,
             radius: radiusKm * 1000,
-            borderStyle: z.visualStyle.borderStyle,
-            borderWidth: z.visualStyle.borderWidth,
-            fillOpacity: z.visualStyle.fillOpacity,
-            fillPattern: z.visualStyle.fillPattern, // Pass pattern name
+            borderStyle: z.visualStyle?.borderStyle || "solid",
+            borderWidth: z.visualStyle?.borderWidth || 3,
+            fillOpacity: z.visualStyle?.fillOpacity || 0.25,
+            fillPattern: z.visualStyle?.fillPattern || "diagonal-stripes",
           },
           geometry: {
             type: "Polygon",
@@ -1027,7 +1215,7 @@ const TouristMap: React.FC = () => {
         };
       }),
     };
-  }, [styledZones]);
+  }, [styledZones, layers.zones, layers.militaryZones]);
 
   // Risk Grids Source (dashed borders, dots pattern, circular grids)
   const riskGridSource = useMemo(() => {
@@ -1161,7 +1349,6 @@ const TouristMap: React.FC = () => {
     }
   }, [data]);
 
-  const onMapLoad = useCallback(() => {}, []);
 
   return (
     <div className="space-y-6">
@@ -1188,17 +1375,25 @@ const TouristMap: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="flex items-center space-x-4 mt-4 sm:mt-0">
+        <div className="flex flex-wrap items-center gap-3 mt-4 sm:mt-0">
           <button
             onClick={() => setIsAddZoneOpen(true)}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-sm"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-sm text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
             <span>Add Danger Zone</span>
           </button>
           <button
+            onClick={() => setIsManageZonesOpen(true)}
+            className="bg-white hover:bg-red-50 text-red-700 border border-red-300 hover:border-red-400 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-sm text-sm font-medium"
+            title="View, locate, and remove danger zones"
+          >
+            <Trash2 className="h-4 w-4 text-red-600" />
+            <span>Remove Danger Zone ({styledZones?.dangerZones?.length || 0})</span>
+          </button>
+          <button
             onClick={fetchData}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-sm text-sm font-medium"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             <span>Refresh Data</span>
@@ -1223,7 +1418,7 @@ const TouristMap: React.FC = () => {
             interactiveLayerIds={[
               ...(touristSource.features.length > 0 &&
               (layers.activeTourists || layers.inactiveTourists)
-                ? ["tourist-circles", "tourist-clusters"]
+                ? ["tourist-circles"]
                 : []),
               ...(alertSource && layers.sos
                 ? ["alert-points", "alert-clusters"]
@@ -1231,7 +1426,7 @@ const TouristMap: React.FC = () => {
               ...(incidentSource && layers.incidents
                 ? ["incident-points"]
                 : []),
-              ...(dangerZoneSource && layers.zones
+              ...(dangerZoneSource && (layers.zones || layers.militaryZones)
                 ? ["danger-zone-polygons"]
                 : []),
               ...(riskGridSource && layers.zones ? ["risk-grid-fill"] : []),
@@ -1247,8 +1442,8 @@ const TouristMap: React.FC = () => {
 
             {/* --- MAPPED DATA SOURCES --- */}
 
-            {/* DANGER ZONES (Solid borders, 25% opacity) */}
-            {dangerZoneSource && layers.zones && (
+            {/* DANGER ZONES & MILITARY ZONES (Solid borders, 25% opacity) */}
+            {dangerZoneSource && (layers.zones || layers.militaryZones) && (
               <Source
                 id="danger-zones"
                 type="geojson"
@@ -1260,19 +1455,24 @@ const TouristMap: React.FC = () => {
                   type="fill"
                   paint={{
                     "fill-color": [
-                      "match",
-                      ["downcase", ["get", "riskLevel"]],
-                      "critical",
-                      "#dc2626",
-                      "very high",
-                      "#ef4444",
-                      "high",
-                      "#f97316",
-                      "medium",
-                      "#eab308",
-                      "low",
-                      "#22c55e",
-                      "#22c55e",
+                      "case",
+                      ["get", "isMilitary"],
+                      "#4f46e5",
+                      [
+                        "match",
+                        ["downcase", ["get", "riskLevel"]],
+                        "critical",
+                        "#dc2626",
+                        "very high",
+                        "#ef4444",
+                        "high",
+                        "#f97316",
+                        "medium",
+                        "#eab308",
+                        "low",
+                        "#22c55e",
+                        "#22c55e",
+                      ],
                     ],
                     "fill-opacity": ["get", "fillOpacity"],
                   }}
@@ -1302,19 +1502,24 @@ const TouristMap: React.FC = () => {
                   ]}
                   paint={{
                     "line-color": [
-                      "match",
-                      ["downcase", ["get", "riskLevel"]],
-                      "critical",
-                      "#991b1b",
-                      "very high",
-                      "#dc2626",
-                      "high",
-                      "#ea580c",
-                      "medium",
-                      "#ca8a04",
-                      "low",
-                      "#16a34a",
-                      "#16a34a",
+                      "case",
+                      ["get", "isMilitary"],
+                      "#3730a3",
+                      [
+                        "match",
+                        ["downcase", ["get", "riskLevel"]],
+                        "critical",
+                        "#991b1b",
+                        "very high",
+                        "#dc2626",
+                        "high",
+                        "#ea580c",
+                        "medium",
+                        "#ca8a04",
+                        "low",
+                        "#16a34a",
+                        "#16a34a",
+                      ],
                     ],
                     "line-width": ["get", "borderWidth"],
                   }}
@@ -1517,60 +1722,12 @@ const TouristMap: React.FC = () => {
               id="tourists"
               type="geojson"
               data={touristSource as any}
-              cluster={true}
-              clusterMaxZoom={14}
-              clusterRadius={50}
+              cluster={false}
             >
-              <Layer
-                id="tourist-clusters"
-                type="circle"
-                source="tourists"
-                filter={["has", "point_count"]}
-                layout={{
-                  visibility:
-                    touristSource.features.length > 0 &&
-                    (layers.activeTourists || layers.inactiveTourists)
-                      ? "visible"
-                      : "none",
-                }}
-                paint={{
-                  "circle-color": "#3b82f6",
-                  "circle-radius": [
-                    "step",
-                    ["get", "point_count"],
-                    15,
-                    10,
-                    20,
-                    50,
-                    25,
-                  ],
-                  "circle-opacity": 0.8,
-                  "circle-stroke-width": 2,
-                  "circle-stroke-color": "#fff",
-                }}
-              />
-              <Layer
-                id="tourist-cluster-count"
-                type="symbol"
-                source="tourists"
-                filter={["has", "point_count"]}
-                layout={{
-                  visibility:
-                    touristSource.features.length > 0 &&
-                    (layers.activeTourists || layers.inactiveTourists)
-                      ? "visible"
-                      : "none",
-                  "text-field": "{point_count_abbreviated}",
-                  "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
-                  "text-size": 12,
-                }}
-                paint={{ "text-color": "#ffffff" }}
-              />
               {/* Filter Active/Inactive based on Layer State */}
               <Layer
                 id="tourist-circles"
                 type="circle"
-                source="tourists"
                 filter={
                   !(
                     touristSource.features.length > 0 &&
@@ -1578,58 +1735,48 @@ const TouristMap: React.FC = () => {
                   )
                     ? ["==", ["get", "status"], "__never_match__"]
                     : layers.activeTourists && layers.inactiveTourists
-                      ? ["all", ["!", ["has", "point_count"]]]
+                      ? ["has", "id"]
                       : layers.activeTourists
-                        ? [
-                            "all",
-                            ["!", ["has", "point_count"]],
-                            ["==", ["get", "status"], "active"],
-                          ]
+                        ? ["==", ["get", "status"], "active"]
                         : layers.inactiveTourists
-                          ? [
-                              "all",
-                              ["!", ["has", "point_count"]],
-                              ["!=", ["get", "status"], "active"],
-                            ]
-                          : [
-                              "all",
-                              ["!", ["has", "point_count"]],
-                              ["==", ["get", "status"], "__none__"],
-                            ]
+                          ? ["!=", ["get", "status"], "active"]
+                          : ["==", ["get", "id"], "__none__"]
                 }
                 paint={{
                   "circle-color": [
                     "match",
                     ["get", "status"],
                     "active",
-                    "#0ea5e9",
-                    "#f97316",
+                    "#10b981", // GREEN for active (live)
+                    "#3b82f6", // BLUE for inactive (offline)
                   ],
-                  "circle-radius": 9,
-                  "circle-stroke-width": 2,
-                  "circle-stroke-color": "#111827",
+                  "circle-radius": 11,
+                  "circle-stroke-width": 3,
+                  "circle-stroke-color": "#ffffff",
                 }}
               />
               <Layer
                 id="tourist-labels"
                 type="symbol"
-                source="tourists"
                 filter={
                   touristSource.features.length > 0 &&
                   (layers.activeTourists || layers.inactiveTourists)
-                    ? ["all", ["!", ["has", "point_count"]]]
+                    ? layers.activeTourists && !layers.inactiveTourists
+                      ? ["==", ["get", "status"], "active"]
+                      : ["has", "id"]
                     : ["==", ["get", "status"], "__never_match__"]
                 }
                 layout={{
                   "text-field": ["coalesce", ["get", "name"], ["get", "id"]],
-                  "text-size": 10,
-                  "text-offset": [0, 1.3],
+                  "text-font": ["Open Sans Regular", "Arial Unicode MS Bold"],
+                  "text-size": 12,
+                  "text-offset": [0, 1.4],
                   "text-anchor": "top",
                 }}
                 paint={{
-                  "text-color": "#111827",
+                  "text-color": "#0f172a",
                   "text-halo-color": "#ffffff",
-                  "text-halo-width": 1,
+                  "text-halo-width": 2,
                 }}
               />
             </Source>
@@ -1691,7 +1838,7 @@ const TouristMap: React.FC = () => {
                   layout={{
                     "text-field": "{point_count_abbreviated}",
                     "text-font": [
-                      "DIN Offc Pro Medium",
+                      "Open Sans Regular",
                       "Arial Unicode MS Bold",
                     ],
                     "text-size": 14,
@@ -1727,9 +1874,9 @@ const TouristMap: React.FC = () => {
                   type="symbol"
                   filter={["!", ["has", "point_count"]]}
                   layout={{
-                    "text-field": "SOC",
+                    "text-field": "SOS",
                     "text-font": [
-                      "DIN Offc Pro Medium",
+                      "Open Sans Regular",
                       "Arial Unicode MS Bold",
                     ],
                     "text-size": 10,
@@ -1743,45 +1890,66 @@ const TouristMap: React.FC = () => {
                 />
               </Source>
             )}
+
+            {/* CLICKED TOURIST POPUP */}
+            {selectedEntity?.type === "tourist" && (() => {
+              const t = data?.mapData.tourists.find((row) => row.id === selectedEntity.id);
+              if (!t || !t.location) return null;
+              const isAct = t.status === "active";
+              return (
+                <Popup
+                  latitude={t.location.lat}
+                  longitude={t.location.lng}
+                  offset={[0, -14]}
+                  closeButton={true}
+                  closeOnClick={false}
+                  onClose={() => setSelectedEntity(null)}
+                  className="z-20 font-sans"
+                >
+                  <div className="p-1 min-w-[170px] space-y-1">
+                    <div className="flex items-center justify-between gap-2 border-b pb-1">
+                      <span className="font-bold text-gray-900 text-sm truncate">{t.name || t.id}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isAct ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>
+                        {isAct ? 'Active (Live)' : 'Inactive (Offline)'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-600 font-mono">
+                      {Number(t.location.lat).toFixed(5)}, {Number(t.location.lng).toFixed(5)}
+                    </div>
+                    <div className="text-[10px] font-medium text-gray-500 flex items-center gap-1">
+                      <span className={`w-2 h-2 rounded-full ${isAct ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
+                      {isAct ? 'Streaming Live Location' : 'Stopped at Last Location'}
+                    </div>
+                  </div>
+                </Popup>
+              );
+            })()}
           </Map>
 
           {/* FLOATING LEGEND (Bottom Right) */}
-          <div className="absolute bottom-6 right-12 bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-gray-200 text-xs z-10 max-w-[180px]">
+          <div className="absolute bottom-6 right-12 bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-gray-200 text-xs z-10 max-w-[200px]">
             <h4 className="font-bold text-gray-700 mb-2">Map Legend</h4>
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500 shadow-sm animate-pulse"></div>{" "}
-                SOS Alert
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-orange-500"></div>{" "}
-                Incident
+                <span className="font-medium text-gray-700">SOS Alert</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-md bg-red-200 border-2 border-red-600"></div>{" "}
                 <span className="flex flex-col">
-                  <span className="font-medium">Danger Zone</span>
+                  <span className="font-medium text-gray-700">Danger Zone</span>
                   <span className="text-[10px] text-gray-500">
-                    Solid • Pre-seeded
+                    Solid • Monitored
                   </span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-md bg-orange-200 border-2 border-dashed border-orange-600"></div>{" "}
-                <span className="flex flex-col">
-                  <span className="font-medium">Risk Grid</span>
-                  <span className="text-[10px] text-gray-500">
-                    Dashed • Dynamic
-                  </span>
-                </span>
+                <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm"></div>{" "}
+                <span className="font-medium text-emerald-800">Active Tourist (Live)</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>{" "}
-                Active Tourist
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-gray-400"></div>{" "}
-                Inactive Tourist
+                <div className="w-3 h-3 rounded-full bg-blue-500 shadow-sm"></div>{" "}
+                <span className="font-medium text-blue-800">Inactive Tourist (Offline)</span>
               </div>
             </div>
           </div>
@@ -1848,14 +2016,35 @@ const TouristMap: React.FC = () => {
                       </div>
                       <div className="p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-lg">
+                          <span className="font-semibold text-lg text-gray-900">
                             {tourist.name}
                           </span>
                           <span
-                            className={`text-xs font-bold px-2 py-1 rounded-full ${tourist.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-800"}`}
+                            className={`text-xs font-bold px-2.5 py-1 rounded-full border shadow-sm ${
+                              tourist.status === "active"
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                : "bg-blue-50 text-blue-800 border-blue-300"
+                            }`}
                           >
-                            {tourist.status.toUpperCase()}
+                            {tourist.status === "active" ? "ACTIVE (LIVE)" : "INACTIVE (OFFLINE)"}
                           </span>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-200 text-xs space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500">Tracking Status:</span>
+                            <span className={`font-semibold flex items-center gap-1.5 ${tourist.status === "active" ? "text-emerald-700" : "text-blue-700"}`}>
+                              <span className={`w-2 h-2 rounded-full ${tourist.status === "active" ? "bg-emerald-500 animate-pulse" : "bg-blue-500"}`}></span>
+                              {tourist.status === "active" ? "Active (GPS Live Streaming)" : "Inactive (Stopped at Last Location)"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center font-mono text-[11px] text-gray-600">
+                            <span>Coordinates:</span>
+                            <span>
+                              {tourist.location?.lat
+                                ? `${Number(tourist.location.lat).toFixed(5)}, ${Number(tourist.location.lng).toFixed(5)}`
+                                : "No GPS data"}
+                            </span>
+                          </div>
                         </div>
                         <div className="text-sm text-gray-600 space-y-2">
                           <p className="flex justify-between">
@@ -2041,60 +2230,127 @@ const TouristMap: React.FC = () => {
                 selectedEntity.type === "zone") &&
                 (() => {
                   const dangerZone = styledZones?.dangerZones.find(
-                    (z) => z._id === selectedEntity.id,
+                    (z) => z._id === selectedEntity.id || (z as any).id === selectedEntity.id,
                   );
                   if (!dangerZone)
                     return (
                       <div className="p-4 text-gray-500">Zone not found</div>
                     );
-                  return (
-                    <>
-                      <div className="p-4 bg-red-50 border-b border-red-100 rounded-t-xl">
-                        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                          <span className="text-xl">⚠️</span>
-                          Danger Zone
-                        </h3>
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <h4 className="font-bold text-lg">{dangerZone.name}</h4>
-                        <div className="text-sm text-gray-600 space-y-2">
-                          <p>
-                            <strong>Risk Level:</strong>{" "}
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                dangerZone.riskLevel
-                                  .toLowerCase()
-                                  .includes("high")
-                                  ? "bg-red-100 text-red-800"
-                                  : dangerZone.riskLevel.toLowerCase() ===
-                                      "medium"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-green-100 text-green-800"
-                              }`}
-                            >
-                              {dangerZone.riskLevel.toUpperCase()}
-                            </span>
-                          </p>
-                          {dangerZone.category && (
+                  const zoneKey = dangerZone._id || (dangerZone as any).id;
+                    const isMil = isMilitaryZone(dangerZone);
+                    return (
+                      <>
+                        <div
+                          className={`p-4 border-b rounded-t-xl ${
+                            isMil
+                              ? "bg-indigo-50 border-indigo-100"
+                              : "bg-red-50 border-red-100"
+                          }`}
+                        >
+                          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                            {isMil ? (
+                              <>
+                                <Shield className="w-5 h-5 text-indigo-700" />
+                                <span>Military & Strategic Zone</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xl">⚠️</span>
+                                <span>Civilian Danger Zone</span>
+                              </>
+                            )}
+                          </h3>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <h4 className="font-bold text-lg">{dangerZone.name}</h4>
+                          <div className="text-sm text-gray-600 space-y-2">
                             <p>
-                              <strong>Category:</strong> {dangerZone.category}
+                              <strong>Classification:</strong>{" "}
+                              {isMil ? (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                  DEFENSE RESTRICTED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-700">
+                                  CIVILIAN HAZARD
+                                </span>
+                              )}
                             </p>
-                          )}
-                          {dangerZone.state && (
                             <p>
-                              <strong>State:</strong> {dangerZone.state}
+                              <strong>Risk Level:</strong>{" "}
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                  dangerZone.riskLevel
+                                    .toLowerCase()
+                                    .includes("high")
+                                    ? "bg-red-100 text-red-800"
+                                    : dangerZone.riskLevel.toLowerCase() ===
+                                        "medium"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-green-100 text-green-800"
+                                }`}
+                              >
+                                {dangerZone.riskLevel.toUpperCase()}
+                              </span>
                             </p>
-                          )}
-                          {dangerZone.radiusKm && (
-                            <p>
-                              <strong>Radius:</strong> {dangerZone.radiusKm} km
-                            </p>
-                          )}
-                          <div className="mt-3 pt-3 border-t border-gray-200">
-                            <p className="text-xs text-gray-500">
-                              <strong>Visual Style:</strong> Solid border •
-                              Pre-seeded zone
-                            </p>
+                            {dangerZone.category && (
+                              <p>
+                                <strong>Category:</strong> {dangerZone.category}
+                              </p>
+                            )}
+                            {dangerZone.state && (
+                              <p>
+                                <strong>State:</strong> {dangerZone.state}
+                              </p>
+                            )}
+                            {dangerZone.radiusKm && (
+                              <p>
+                                <strong>Radius:</strong> {dangerZone.radiusKm} km
+                              </p>
+                            )}
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <p className="text-xs text-gray-500">
+                                <strong>Visual Style:</strong>{" "}
+                                {isMil
+                                  ? "Solid indigo boundary • Strategic Defense Area"
+                                  : "Solid red boundary • Pre-seeded civilian zone"}
+                              </p>
+                            </div>
+                          <div className="pt-2">
+                            {confirmingZoneId === zoneKey ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDangerZone(zoneKey, dangerZone.name)}
+                                  disabled={isDeletingZoneId === zoneKey}
+                                  className="flex-1 bg-red-700 hover:bg-red-800 disabled:bg-red-300 text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs transition-colors shadow-sm"
+                                >
+                                  {isDeletingZoneId === zoneKey ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>{isDeletingZoneId === zoneKey ? "Removing..." : "Yes, Confirm Delete"}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingZoneId(null)}
+                                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingZoneId(zoneKey)}
+                                disabled={isDeletingZoneId === zoneKey}
+                                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors shadow-sm"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                <span>Remove Danger Zone</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2237,48 +2493,42 @@ const TouristMap: React.FC = () => {
                 <h3 className="font-semibold text-gray-900">Live Statistics</h3>
               </div>
               <div className="divide-y divide-gray-100">
-                {data && (
-                  <>
-                    <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-                      <span className="text-sm text-gray-600">
-                        Total Tourists
-                      </span>
-                      <span className="font-bold text-gray-900 text-lg">
-                        {data.stats.totalTourists}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-                      <span className="text-sm text-gray-600">
-                        Active Alerts
-                      </span>
-                      <span className="font-bold text-red-600 text-lg">
-                        {data.stats.activeAlerts}
-                      </span>
-                    </div>
-                  </>
-                )}
-                {styledZones && (
-                  <>
-                    <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-                      <span className="text-sm text-gray-600 flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-sm bg-red-600"></span>
-                        Danger Zones
-                      </span>
-                      <span className="font-bold text-red-600 text-lg">
-                        {styledZones.dangerZones.length}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-                      <span className="text-sm text-gray-600 flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-sm bg-orange-600"></span>
-                        Risk Grids
-                      </span>
-                      <span className="font-bold text-orange-600 text-lg">
-                        {styledZones.riskGrids.length}
-                      </span>
-                    </div>
-                  </>
-                )}
+                {data && (() => {
+                  const activeCount = data.mapData.tourists.filter((t) => t.status === "active").length;
+                  const inactiveCount = data.mapData.tourists.filter((t) => t.status !== "active").length;
+                  const totalCount = data.stats.totalTourists || data.mapData.tourists.length;
+
+                  return (
+                    <>
+                      <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                        <span className="text-sm font-medium text-gray-700">
+                          Total Tourists
+                        </span>
+                        <span className="font-bold text-gray-900 text-lg">
+                          {totalCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                        <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm animate-pulse"></span>
+                          Active Tourists (Live)
+                        </span>
+                        <span className="font-bold text-emerald-600 text-lg">
+                          {activeCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                        <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm"></span>
+                          Inactive Tourists (Offline)
+                        </span>
+                        <span className="font-bold text-blue-600 text-lg">
+                          {inactiveCount}
+                        </span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -2296,53 +2546,28 @@ const TouristMap: React.FC = () => {
                     onChange={() => toggleLayer("sos")}
                     className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
                   />
-                  <span className="flex-1 font-medium">SOS Alerts</span>
-                  <div className="w-3 h-3 rounded-full bg-red-500 shadow-sm"></div>
+                  <span className="flex-1 font-medium text-gray-800">SOS Alerts</span>
+                  <div className="w-3 h-3 rounded-full bg-red-500 shadow-sm animate-pulse"></div>
                 </label>
-                <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors border border-transparent hover:border-gray-100">
-                  <input
-                    type="checkbox"
-                    checked={layers.incidents}
-                    onChange={() => toggleLayer("incidents")}
-                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                  />
-                  <span className="flex-1 font-medium">Incidents</span>
-                  <div className="w-3 h-3 rounded-full bg-orange-500 shadow-sm"></div>
-                </label>
-                <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors border border-transparent hover:border-gray-100">
-                  <input
-                    type="checkbox"
-                    checked={layers.zones}
-                    onChange={() => toggleLayer("zones")}
-                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
-                  />
-                  <span className="flex-1 font-medium">
-                    Danger Zones & Risk Grids
-                  </span>
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-red-600"></div>
-                    <div className="w-2 h-2 rounded-sm bg-orange-600"></div>
-                  </div>
-                </label>
-                <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors border border-transparent hover:border-gray-100">
+                <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer hover:bg-emerald-50/50 p-2 rounded transition-colors border border-transparent hover:border-emerald-100">
                   <input
                     type="checkbox"
                     checked={layers.activeTourists}
                     onChange={() => toggleLayer("activeTourists")}
-                    className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
                   />
-                  <span className="flex-1 font-medium">Active Tourists</span>
+                  <span className="flex-1 font-medium text-emerald-900">Active Tourists (Live)</span>
                   <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm"></div>
                 </label>
-                <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors border border-transparent hover:border-gray-100">
+                <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer hover:bg-blue-50/50 p-2 rounded transition-colors border border-transparent hover:border-blue-100">
                   <input
                     type="checkbox"
                     checked={layers.inactiveTourists}
                     onChange={() => toggleLayer("inactiveTourists")}
                     className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
                   />
-                  <span className="flex-1 font-medium">Inactive</span>
-                  <div className="w-3 h-3 rounded-full bg-gray-400 shadow-sm"></div>
+                  <span className="flex-1 font-medium text-blue-900">Inactive Tourists (Offline)</span>
+                  <div className="w-3 h-3 rounded-full bg-blue-500 shadow-sm"></div>
                 </label>
               </div>
             </div>
@@ -2534,6 +2759,258 @@ const TouristMap: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {isManageZonesOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-red-50 to-orange-50">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-red-100 text-red-700 rounded-xl">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Manage Danger Zones
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Review, locate, or remove danger zones from the map
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="px-2.5 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">
+                  {styledZones?.dangerZones?.length || 0} Total
+                </span>
+                <button
+                  onClick={() => setIsManageZonesOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-white/60 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Search Input & Filter Tabs */}
+            <div className="p-4 border-b border-gray-100 bg-gray-50 space-y-3">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  value={zoneSearchQuery}
+                  onChange={(e) => setZoneSearchQuery(e.target.value)}
+                  placeholder="Search by zone name, state, or category..."
+                  className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                />
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setZoneTypeFilter("all")}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                    zoneTypeFilter === "all"
+                      ? "bg-gray-900 text-white shadow-sm"
+                      : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                  }`}
+                >
+                  All ({styledZones?.dangerZones?.length || 0})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoneTypeFilter("civilian")}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                    zoneTypeFilter === "civilian"
+                      ? "bg-red-600 text-white shadow-sm"
+                      : "bg-white text-gray-600 hover:bg-red-50 border border-gray-200"
+                  }`}
+                >
+                  Civilian Hazards (
+                  {(styledZones?.dangerZones || []).filter((z) => !isMilitaryZone(z)).length}
+                  )
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoneTypeFilter("military")}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 ${
+                    zoneTypeFilter === "military"
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200"
+                  }`}
+                >
+                  <Shield className="w-3 h-3" />
+                  <span>
+                    Military (
+                    {(styledZones?.dangerZones || []).filter(isMilitaryZone).length}
+                    )
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zone List */}
+            <div className="overflow-y-auto p-4 space-y-3 flex-1 divide-y divide-gray-100">
+              {(() => {
+                const zones = (styledZones?.dangerZones || []).filter((z) => {
+                  const isMil = isMilitaryZone(z);
+                  if (zoneTypeFilter === "civilian" && isMil) return false;
+                  if (zoneTypeFilter === "military" && !isMil) return false;
+
+                  if (!zoneSearchQuery.trim()) return true;
+                  const q = zoneSearchQuery.toLowerCase();
+                  return (
+                    z.name?.toLowerCase().includes(q) ||
+                    z.state?.toLowerCase().includes(q) ||
+                    z.category?.toLowerCase().includes(q) ||
+                    z.riskLevel?.toLowerCase().includes(q)
+                  );
+                });
+
+                if (zones.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-gray-400">
+                      <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-40 text-amber-500" />
+                      <p className="text-sm font-medium">No danger zones found</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {zoneSearchQuery.trim()
+                          ? "Try a different search keyword"
+                          : zoneTypeFilter !== "all"
+                            ? `No zones under "${zoneTypeFilter}" category`
+                            : "No danger zones are currently registered on the map"}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return zones.map((zone) => {
+                  const zoneKey = zone._id || (zone as any).id;
+                  const isDeleting = isDeletingZoneId === zoneKey;
+                  const lat = zone.coords?.[0];
+                  const lng = zone.coords?.[1];
+                  const isMil = isMilitaryZone(zone);
+
+                  return (
+                    <div
+                      key={zoneKey}
+                      className={`pt-3 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2.5 rounded-xl transition-colors ${
+                        isMil ? "hover:bg-indigo-50/50" : "hover:bg-gray-50/60"
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-semibold text-gray-900 text-sm">
+                            {zone.name}
+                          </h4>
+                          {isMil ? (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 flex items-center gap-1 border border-indigo-200">
+                              <Shield className="w-2.5 h-2.5" /> Military
+                            </span>
+                          ) : null}
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                              zone.riskLevel?.toLowerCase().includes("high")
+                                ? "bg-red-100 text-red-800"
+                                : zone.riskLevel?.toLowerCase() === "medium"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-green-100 text-green-800"
+                            }`}
+                          >
+                            {zone.riskLevel?.toUpperCase()}
+                          </span>
+                          {zone.category && (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600">
+                              {zone.category}
+                            </span>
+                          )}
+                          {zone.state && (
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700">
+                              {zone.state}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          {lat != null && lng != null ? (
+                            <span>
+                              Coords: {Number(lat).toFixed(4)}, {Number(lng).toFixed(4)}
+                            </span>
+                          ) : null}
+                          {zone.radiusKm != null && (
+                            <span> • Radius: {zone.radiusKm} km</span>
+                          )}
+                          {zone.type && <span> • Shape: {zone.type}</span>}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleFlyToZone(zone)}
+                          className="px-3 py-1.5 text-xs font-medium text-gray-700 hover:text-blue-700 hover:bg-blue-50 border border-gray-200 rounded-lg transition-colors flex items-center gap-1.5"
+                          title="Locate on map"
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Locate</span>
+                        </button>
+                        {confirmingZoneId === zoneKey ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDangerZone(zoneKey, zone.name)}
+                              disabled={isDeleting}
+                              className="px-3 py-1.5 text-xs font-bold text-white bg-red-700 hover:bg-red-800 disabled:bg-red-300 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                              title="Confirm removal"
+                            >
+                              {isDeleting ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                              <span>Confirm?</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingZoneId(null)}
+                              className="px-2 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingZoneId(zoneKey)}
+                            disabled={isDeleting}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                            title="Remove this danger zone"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+              <span className="text-xs text-gray-500">
+                Removing a zone stops geofence warnings and map indicators for this area.
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsManageZonesOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors shadow-sm"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

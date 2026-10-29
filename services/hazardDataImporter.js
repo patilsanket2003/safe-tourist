@@ -250,6 +250,16 @@ class HazardDataImporter {
         const name = el.tags.name || (isRestricted ? 'Restricted Military Zone' : 'Protected Wildlife Reserve');
         
         const source_id = `osm-area-${el.id}`;
+
+        // Specifically exclude Anand Nagar / Kasarvadavali false-positive military zone (OSM area 554975362)
+        if (
+          el.id === 554975362 ||
+          el.id === '554975362' ||
+          (isRestricted && lat >= 19.23 && lat <= 19.29 && lon >= 72.96 && lon <= 73.01)
+        ) {
+          console.log(`⏩ [HazardImporter] Skipping excluded Anand Nagar / Kasarvadavali military area: ${source_id}`);
+          continue;
+        }
         
         const hazardData = {
           name,

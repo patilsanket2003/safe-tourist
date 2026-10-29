@@ -5,14 +5,16 @@ import Constants from "expo-constants";
 // - For physical device testing: use your computer's IP (e.g., http://192.168.1.4:5000)
 // - For Android emulator: use http://10.0.2.2:5000
 // - For iOS simulator: use http://localhost:5000
-// When running on web (e.g. mobile Chrome, Vercel), ensure we connect to the live Render backend
+// When running on web or locally, connect to local backend if running on localhost or specified in env
 const isWeb = typeof window !== "undefined";
-const isLocalhost = isWeb && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+const isDirectLocal8081 = isWeb && (window.location.port === "8081" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"));
 
 export const SERVER_URL =
-  (isWeb && !isLocalhost)
-    ? "https://safe-tourist-backend-ix0g.onrender.com"
-    : (process.env.SERVER_URL || Constants.expoConfig?.extra?.SERVER_URL || "https://safe-tourist-backend-ix0g.onrender.com");
+  (isDirectLocal8081
+    ? `http://${window.location.hostname}:5001`
+    : (isWeb
+        ? window.location.origin
+        : (process.env.SERVER_URL || Constants.expoConfig?.extra?.SERVER_URL || "http://localhost:5001")));
 
 // AI model URLs for getting safety score predictions
 export const GEO_MODEL_URL =

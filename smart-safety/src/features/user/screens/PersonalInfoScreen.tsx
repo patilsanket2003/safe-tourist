@@ -18,7 +18,7 @@ const BLOOD_GROUPS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
 
 export default function PersonalInfoScreen() {
     const navigation = useNavigation<any>();
-    const { state, updateProfile } = useApp();
+    const { state, updateProfile, logout } = useApp();
     const user = (state.user || {}) as any;
 
     // Personal Info — pre-fill from authenticated user data
@@ -356,6 +356,25 @@ export default function PersonalInfoScreen() {
                     )}
                 </TouchableOpacity>
 
+                {/* Return to Login / Switch Account */}
+                <TouchableOpacity
+                    style={styles.logoutButton}
+                    onPress={() => {
+                        Alert.alert(
+                            'Log Out',
+                            'Are you sure you want to log out and return to the login screen?',
+                            [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Log Out', style: 'destructive', onPress: logout },
+                            ]
+                        );
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="log-out-outline" size={18} color="#ef4444" style={{ marginRight: 6 }} />
+                    <Text style={styles.logoutButtonText}>Log Out / Switch Account</Text>
+                </TouchableOpacity>
+
                 <View style={{ height: 40 }} />
             </ScrollView>
         </View>
@@ -363,6 +382,22 @@ export default function PersonalInfoScreen() {
 }
 
 const styles = StyleSheet.create({
+    logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 14,
+        paddingVertical: 14,
+        borderRadius: 12,
+        backgroundColor: '#fef2f2',
+        borderWidth: 1,
+        borderColor: '#fecaca',
+    },
+    logoutButtonText: {
+        color: '#ef4444',
+        fontSize: 15,
+        fontWeight: '700',
+    },
     container: {
         flex: 1,
         backgroundColor: '#f8fafc',

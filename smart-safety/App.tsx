@@ -17,6 +17,9 @@ import DaminiAssistant from "./src/features/ai/components/DaminiAssistant"
 import EmergencySirenModal from "./src/components/EmergencySirenModal"
 
 import { ThemeProvider } from "./src/context/ThemeContext"
+import * as Font from "expo-font"
+import { MaterialCommunityIcons, Ionicons, FontAwesome } from "@expo/vector-icons"
+import "./src/utils/injectWebFonts"
 
 // Ensure background tasks are defined at startup.
 import "./src/services/backgroundLocation";
@@ -96,6 +99,18 @@ function AppContent() {
     async function prepare() {
       try {
         console.log('App: Starting initialization...')
+        // Preload vector icon fonts for clean UI rendering
+        try {
+          await Font.loadAsync({
+            ...MaterialCommunityIcons.font,
+            ...Ionicons.font,
+            ...FontAwesome.font,
+          });
+          console.log('App: Icon fonts loaded successfully');
+        } catch (fontErr) {
+          console.warn('App: Font loadAsync warning (handled by web inject):', fontErr);
+        }
+
         // Request runtime notification permissions in background without blocking initial render
         requestNotificationPermission()
           .then((granted) => console.log('Notification permission granted:', granted))

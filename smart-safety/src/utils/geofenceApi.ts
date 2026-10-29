@@ -273,7 +273,22 @@ export async function fetchDynamicGeofences(
         if (hazardRes.ok) {
           const hazardData = await hazardRes.json();
           if (hazardData.success && Array.isArray(hazardData.data)) {
-            globalHazards = hazardData.data.map((h: any) => {
+            globalHazards = hazardData.data
+              .filter((h: any) => {
+                // Strictly exclude false-positive military zone in Anand Nagar / Kasarvadavali, Thane
+                if (h.source_id === 'osm-area-554975362') return false;
+                const coords = h.geometry?.coordinates;
+                if (coords && coords.length === 2) {
+                  const lng = coords[0];
+                  const lat = coords[1];
+                  const isMil = (h.name || '').toLowerCase().includes('military') || (h.type || '').toLowerCase().includes('military') || (h.type || '').toLowerCase().includes('restricted');
+                  if (isMil && lat >= 19.23 && lat <= 19.29 && lng >= 72.96 && lng <= 73.01) {
+                    return false;
+                  }
+                }
+                return true;
+              })
+              .map((h: any) => {
               // Convert GeoJSON Point/Polygon to GeoFence format
               let polygonCoords: [number, number][] = [];
               let coords: [number, number] = [0, 0];

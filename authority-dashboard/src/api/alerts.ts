@@ -13,7 +13,7 @@
 */
 
 import { API_BASE_URL } from "../config";
-const API_BASE = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
+const API_BASE = API_BASE_URL;
 
 import {
   getAuthoritySocket,

@@ -1,8 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { API_BASE_URL } from "../config";
 
-// Base URL for backend (can be overridden via Vite env)
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || API_BASE_URL;
+const BASE_URL = API_BASE_URL;
 
 // // Connects to backend for general client usage
 // const socket: Socket = io(BASE_URL, { autoConnect: false });

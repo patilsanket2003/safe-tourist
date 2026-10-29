@@ -3,12 +3,13 @@ import IncidentReportModal from '../../report/components/IncidentReportModal'
 import { View, StyleSheet, Dimensions, Alert, StatusBar, Text, Platform } from 'react-native'
 import * as Location from 'expo-location'
 import { WebView } from 'react-native-webview'
-import { GeoFence, haversineKm } from '../../../utils/geofenceLogic'
+import { GeoFence, haversineKm, isMilitaryZone } from '../../../utils/geofenceLogic'
 import { useApp } from '../../../context/AppContext'
 import { useLocation } from '../../../context/LocationContext'
 import { usePathDeviation } from '../../../context/PathDeviationContext'
 import { reverseGeocode } from '../../map/components/MapboxMap/geoUtils'
-import { loadFences } from '../../map/services/geofenceService'
+import geofenceService, { loadFences, evaluateUserLocation, isRedOrRestrictedZone } from '../../map/services/geofenceService'
+import { triggerSirenAlert } from '../../../utils/alertHelpers'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import {
   Route,
@@ -24,6 +25,7 @@ import MapContainer from '../../map/components/MapboxMap/MapContainer'
 import { WebViewMessage } from '../../map/components/MapboxMap/types'
 import touristSocketService from '../../../services/touristSocketService'
 import { showToast } from '../../../utils/toast'
+import { getActiveSharedLocationsWithMe } from '../../../utils/api'
 
 // Import overlay UI components
 import DaminiAssistant from '../../ai/components/DaminiAssistant'
@@ -65,6 +67,7 @@ export default function EmergencyScreen({ navigation }: any) {
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false)
   const [isLegendExpanded, setIsLegendExpanded] = useState(false)
   const [showHazards, setShowHazards] = useState(true)
+  const [showMilitaryZones, setShowMilitaryZones] = useState(false)
 
   // Directions Mode State
   const [directionsMode, setDirectionsMode] = useState(false)
@@ -115,14 +118,18 @@ export default function EmergencyScreen({ navigation }: any) {
     }
   }, [setMapRef, mapReady])
 
-  // Load geofences on mount using service (tries server first, then bundled)
+  // Load geofences on mount and listen for real-time danger zones added by authority
   useEffect(() => {
     const loadGeoFencesFromService = async () => {
       setLoadingGeofences(true)
       try {
         const userId = state.user?.touristId
-        const fences = await loadFences(undefined, undefined, userId)
+        const fences = await loadFences(undefined, undefined, userId, true)
         setGeoFences(fences)
+        console.log('✅ [EmergencyScreen] Loaded/Updated geofences:', fences.length)
+        if (currentLocation?.coords) {
+          evaluateUserLocation(currentLocation.coords)
+        }
       } catch (err) {
         console.warn('Failed to load geofences:', err)
         setGeoFences([])
@@ -130,15 +137,72 @@ export default function EmergencyScreen({ navigation }: any) {
         setLoadingGeofences(false)
       }
     }
+
     loadGeoFencesFromService()
-  }, [])
+
+    const handleZoneRefresh = async (data: any) => {
+      console.log('🚨 [EmergencyScreen] Real-time zone update received, reloading map fences:', data)
+      await loadGeoFencesFromService()
+      if (currentLocation?.coords) {
+        evaluateUserLocation(currentLocation.coords)
+
+        // Direct check for new danger zone
+        const zCoords = data?.coords || data?.coordinates;
+        if (Array.isArray(zCoords) && zCoords.length === 2) {
+          const { haversineKm } = require('../../../utils/geofenceLogic');
+          const dist = haversineKm([currentLocation.coords.latitude, currentLocation.coords.longitude], [Number(zCoords[0]), Number(zCoords[1])]);
+          const rKm = Number(data.radiusKm) || (data.radius ? data.radius / 1000 : 1);
+          if (dist <= rKm) {
+            console.log(`🚨 [EmergencyScreen] User is inside newly added danger zone (${dist.toFixed(2)}km <= ${rKm}km)! Sounding siren!`);
+            triggerSirenAlert(
+              `🚨 DANGER ZONE: ${data.name || 'RESTRICTED AREA'}`,
+              `WARNING: You entered an active danger zone (${data.category || data.name || 'Danger Area'}). Emergency siren activated!`
+            );
+          }
+        }
+      }
+    }
+
+    const unsubAdded = touristSocketService.on('dangerZoneAdded', handleZoneRefresh)
+    const unsubRemoved = touristSocketService.on('dangerZoneRemoved', handleZoneRefresh)
+    const unsubMap = touristSocketService.on('mapDataUpdated', handleZoneRefresh)
+
+    return () => {
+      if (unsubAdded) unsubAdded()
+      if (unsubRemoved) unsubRemoved()
+      if (unsubMap) unsubMap()
+    }
+  }, [state.user?.touristId])
+
+  // Note: Geofence enter/exit monitoring and siren alerts are centrally handled globally in AppContext
+
+  const hasCenteredMapRef = React.useRef(false);
+  const hasRealCoordsRef = React.useRef(false);
 
   // Live GPS tracking: watch real-time position and stream to backend & map
   useEffect(() => {
     let watchId: any = null;
     let sub: any = null;
 
-    const handleNewPos = (lat: number, lng: number, accuracy?: number | null, speed?: number | null, heading?: number | null, timestamp?: number) => {
+    const handleNewPos = (
+      lat: number,
+      lng: number,
+      accuracy?: number | null,
+      speed?: number | null,
+      heading?: number | null,
+      timestamp?: number,
+      isRealGps: boolean = true,
+      shouldForceCenter: boolean = false
+    ) => {
+      // If we already have real coordinates, ignore mock fallback
+      if (!isRealGps && hasRealCoordsRef.current) {
+        return;
+      }
+
+      if (isRealGps) {
+        hasRealCoordsRef.current = true;
+      }
+
       const loc = {
         coords: {
           latitude: lat,
@@ -153,6 +217,20 @@ export default function EmergencyScreen({ navigation }: any) {
       };
       setCurrentLocation(loc);
 
+      // Reverse geocode to resolve location name for the TopLocationCard
+      reverseGeocode(lat, lng)
+        .then((addr) => {
+          if (addr) setCurrentAddress(addr);
+        })
+        .catch((e) => console.warn('Reverse geocode error:', e));
+
+      // Evaluate geofences immediately with new position
+      evaluateUserLocation({
+        latitude: lat,
+        longitude: lng,
+        accuracy: accuracy ?? 5,
+      });
+
       // Send to backend via Socket.IO
       touristSocketService.updateLocation({
         lat,
@@ -163,7 +241,12 @@ export default function EmergencyScreen({ navigation }: any) {
         timestamp: new Date(loc.timestamp).toISOString(),
       });
 
-      // Update map marker
+      // Update map marker and force center if first time or explicitly requested
+      const mustCenter = shouldForceCenter || !hasCenteredMapRef.current;
+      if (mustCenter) {
+        hasCenteredMapRef.current = true;
+      }
+
       if (webViewRef.current) {
         webViewRef.current.postMessage(
           JSON.stringify({
@@ -171,6 +254,7 @@ export default function EmergencyScreen({ navigation }: any) {
             latitude: lat,
             longitude: lng,
             accuracy: accuracy || 5,
+            forceCenter: mustCenter,
           })
         );
       }
@@ -178,21 +262,27 @@ export default function EmergencyScreen({ navigation }: any) {
 
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
       console.log('📍 Starting HTML5 GPS watch in Chrome/Web');
-      navigator.geolocation.getCurrentPosition(
-        (pos) => handleNewPos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, pos.coords.speed, pos.coords.heading, pos.timestamp),
-        (err) => {
-          console.warn('HTML5 Geo error (HTTP origin blocked in Chrome):', err);
-          // Only fall back if no valid position has been obtained yet
-          if (!currentLocation?.coords) {
-            handleNewPos(19.0760, 72.8777, 10, 0, 0);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
+      const requestWebPosition = (highAccuracy: boolean) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => handleNewPos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, pos.coords.speed, pos.coords.heading, pos.timestamp, true, true),
+          (err) => {
+            console.warn(`HTML5 Geo error (highAccuracy=${highAccuracy}):`, err);
+            if (highAccuracy) {
+              requestWebPosition(false);
+            } else if (!hasRealCoordsRef.current && !currentLocation?.coords) {
+              console.warn('HTML5 Geolocation waiting for user location permission...');
+            }
+          },
+          { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 5000 : 15000, maximumAge: 10000 }
+        );
+      };
+
+      requestWebPosition(false);
+
       watchId = navigator.geolocation.watchPosition(
-        (pos) => handleNewPos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, pos.coords.speed, pos.coords.heading, pos.timestamp),
+        (pos) => handleNewPos(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, pos.coords.speed, pos.coords.heading, pos.timestamp, true),
         (err) => console.warn('HTML5 watch error:', err),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 5000 }
       );
     } else {
       (async () => {
@@ -205,7 +295,7 @@ export default function EmergencyScreen({ navigation }: any) {
                 timeInterval: 2000,
                 distanceInterval: 1,
               },
-              (loc) => handleNewPos(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy, loc.coords.speed, loc.coords.heading, loc.timestamp)
+              (loc) => handleNewPos(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy, loc.coords.speed, loc.coords.heading, loc.timestamp, true)
             );
           }
         } catch (e) {
@@ -228,15 +318,21 @@ export default function EmergencyScreen({ navigation }: any) {
   useEffect(() => {
     if (!webViewRef.current || !mapReady) return
 
+    const filteredFences = (geoFences || []).filter((f) => {
+      const isMil = isMilitaryZone(f);
+      if (isMil) return showMilitaryZones;
+      return showHazards;
+    });
+
     try {
       webViewRef.current.postMessage(JSON.stringify({
         type: 'setGeoFences',
-        fences: showHazards ? geoFences : []
+        fences: filteredFences
       }))
     } catch (e) {
       console.warn('Failed to send geofences to WebView', e)
     }
-  }, [mapReady, geoFences, showHazards])
+  }, [mapReady, geoFences, showHazards, showMilitaryZones])
 
   // Fetch POIs when route changes
   useEffect(() => {
@@ -402,6 +498,45 @@ export default function EmergencyScreen({ navigation }: any) {
     
     return cleanup
   }, [mapReady, currentLocation, state.user?.role])
+
+  // Family & Friends live location listener
+  useEffect(() => {
+    if (!mapReady || !webViewRef.current) return;
+
+    // 1. Fetch any family/friends currently sharing live location with this user
+    if (state.token) {
+      getActiveSharedLocationsWithMe(state.token)
+        .then((res) => {
+          if (res?.success && Array.isArray(res.locations) && res.locations.length > 0) {
+            console.log(`[EmergencyScreen] Loaded ${res.locations.length} active family shared location(s)`);
+            webViewRef.current?.postMessage(
+              JSON.stringify({
+                type: 'SET_FAMILY_LOCATIONS',
+                locations: res.locations,
+              })
+            );
+          }
+        })
+        .catch((err) => console.warn('[EmergencyScreen] Failed to fetch active family locations:', err));
+    }
+
+    // 2. Listen for real-time family location streams from Socket.IO
+    const cleanupFamily = touristSocketService.onFamilyLocationUpdate((updateData) => {
+      console.log('[EmergencyScreen] 👨‍👩‍👧 Received real-time familyLocationUpdate:', updateData);
+      if (webViewRef.current) {
+        webViewRef.current.postMessage(
+          JSON.stringify({
+            type: 'FAMILY_LOCATION_UPDATE',
+            data: updateData,
+          })
+        );
+      }
+    });
+
+    return () => {
+      if (typeof cleanupFamily === 'function') cleanupFamily();
+    };
+  }, [mapReady, state.token])
 
   useEffect(() => {
     if (mapReady && webViewRef.current && currentLocation) {
@@ -817,64 +952,62 @@ export default function EmergencyScreen({ navigation }: any) {
 
       if (Platform.OS === 'web') {
         if (typeof navigator !== 'undefined' && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const loc = {
-                coords: {
-                  latitude: pos.coords.latitude,
-                  longitude: pos.coords.longitude,
-                  accuracy: pos.coords.accuracy || 10,
-                  speed: pos.coords.speed || 0,
-                  heading: pos.coords.heading || 0,
-                  altitude: null,
-                  altitudeAccuracy: null,
-                },
-                timestamp: pos.timestamp,
-              };
-              setCurrentLocation(loc);
-              touristSocketService.updateLocation({
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-                timestamp: new Date().toISOString(),
-              });
-              webViewRef.current?.postMessage(JSON.stringify({
-                type: 'setLocation',
-                location: loc.coords,
-                forceCenter: true,
-              }));
-              setLoadingLocation(false);
-            },
-            () => {
-              // Insecure origin fallback
-              const demoLoc = {
-                coords: {
-                  latitude: 19.0760,
-                  longitude: 72.8777,
-                  accuracy: 10,
-                  speed: 0,
-                  heading: 0,
-                  altitude: null,
-                  altitudeAccuracy: null,
-                },
-                timestamp: Date.now(),
-              };
-              setCurrentLocation(demoLoc);
-              touristSocketService.updateLocation({
-                lat: 19.0760,
-                lng: 72.8777,
-                accuracy: 10,
-                timestamp: new Date().toISOString(),
-              });
-              webViewRef.current?.postMessage(JSON.stringify({
-                type: 'setLocation',
-                location: demoLoc.coords,
-                forceCenter: true,
-              }));
-              setLoadingLocation(false);
-            },
-            { enableHighAccuracy: true, timeout: 5000 }
-          );
+          const fetchPosition = (highAccuracy: boolean) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const loc = {
+                  coords: {
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy || 10,
+                    speed: pos.coords.speed || 0,
+                    heading: pos.coords.heading || 0,
+                    altitude: null,
+                    altitudeAccuracy: null,
+                  },
+                  timestamp: pos.timestamp,
+                };
+                setCurrentLocation(loc);
+                reverseGeocode(pos.coords.latitude, pos.coords.longitude)
+                  .then((addr) => {
+                    if (addr) setCurrentAddress(addr);
+                  })
+                  .catch(() => {});
+                touristSocketService.updateLocation({
+                  lat: pos.coords.latitude,
+                  lng: pos.coords.longitude,
+                  accuracy: pos.coords.accuracy,
+                  timestamp: new Date().toISOString(),
+                });
+                webViewRef.current?.postMessage(JSON.stringify({
+                  type: 'setLocation',
+                  location: loc.coords,
+                  forceCenter: true,
+                }));
+                setLoadingLocation(false);
+              },
+              (err) => {
+                console.warn(`Web getCurrentLocation error (highAccuracy=${highAccuracy}):`, err);
+                if (highAccuracy) {
+                  fetchPosition(false);
+                } else {
+                  if (currentLocation?.coords && webViewRef.current) {
+                    webViewRef.current.postMessage(JSON.stringify({
+                      type: 'setLocation',
+                      location: currentLocation.coords,
+                      forceCenter: true,
+                    }));
+                  } else if (!hasRealCoordsRef.current) {
+                    console.warn('Waiting for real GPS coordinates...');
+                  }
+                  setLoadingLocation(false);
+                }
+              },
+              { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 5000 : 15000 }
+            );
+          };
+
+          fetchPosition(false);
           return;
         }
       }
@@ -942,10 +1075,12 @@ export default function EmergencyScreen({ navigation }: any) {
           break
         case 'mapClick':
           if (typeof (message as any).lat === 'number' && typeof (message as any).lng === 'number') {
+            const clickLat = (message as any).lat;
+            const clickLng = (message as any).lng;
             setCurrentLocation({
               coords: {
-                latitude: (message as any).lat,
-                longitude: (message as any).lng,
+                latitude: clickLat,
+                longitude: clickLng,
                 accuracy: 5,
                 altitude: null,
                 altitudeAccuracy: null,
@@ -953,6 +1088,11 @@ export default function EmergencyScreen({ navigation }: any) {
                 speed: null,
               },
               timestamp: Date.now(),
+            });
+            evaluateUserLocation({
+              latitude: clickLat,
+              longitude: clickLng,
+              accuracy: 5,
             });
           }
           break
@@ -1134,6 +1274,8 @@ export default function EmergencyScreen({ navigation }: any) {
           visible={!isDirectionsSheetVisible}
           showHazards={showHazards}
           onToggleHazards={() => setShowHazards(prev => !prev)}
+          showMilitaryZones={showMilitaryZones}
+          onToggleMilitary={() => setShowMilitaryZones(prev => !prev)}
         />
       )}
 
@@ -1142,6 +1284,10 @@ export default function EmergencyScreen({ navigation }: any) {
         onToggle={() => setIsStyleSheetExpanded(prev => !prev)}
         selectedStyle={selectedStyle}
         onSelectStyle={handleStyleChange}
+        showHazards={showHazards}
+        onToggleHazards={() => setShowHazards(prev => !prev)}
+        showMilitaryZones={showMilitaryZones}
+        onToggleMilitary={() => setShowMilitaryZones(prev => !prev)}
       />
 
       {/* Directions Bottom Sheet (Summary) - Only visible when route exists */}

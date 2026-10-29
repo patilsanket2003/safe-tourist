@@ -2,6 +2,7 @@ const express = require('express');
 const {
   receiveGeofenceTransitions,
   createGeoFenceToDangerLocation,
+  deleteDangerZone,
   getallZones,
   getZonebyId,
   getHighRiskZoneCount,
@@ -29,6 +30,8 @@ router.get('/all-zones-styled', getAllZonesWithStyling);
 router.get('/', getallZones);
 router.post('/', createGeoFenceToDangerLocation);
 router.post('/danger-zone', createGeoFenceToDangerLocation);
+router.delete('/:id', deleteDangerZone);
+router.delete('/danger-zone/:id', deleteDangerZone);
 router.get('/count', getHighRiskZoneCount);
 router.get('/zone/:id', getZonebyId);
 

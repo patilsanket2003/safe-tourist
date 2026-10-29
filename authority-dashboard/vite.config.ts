@@ -25,6 +25,27 @@ export default defineConfig({
       }
     }
   },
+  preview: {
+    host: true,
+    port: 5173,
+    allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/socket.io': {
+        target: 'http://127.0.0.1:5001',
+        ws: true,
+        changeOrigin: true,
+      },
+      '/count': {
+        target: 'http://127.0.0.1:5001',
+        changeOrigin: true,
+      }
+    }
+  },
   optimizeDeps: {
     exclude: ['lucide-react', 'maplibre-gl'],
   },

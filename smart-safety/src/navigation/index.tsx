@@ -34,10 +34,16 @@ import BuildItineraryScreen from "../features/trip/screens/BuildItineraryScreen"
 import PeopleScreen from "../features/people/screens/PeopleScreen";
 import EditPersonScreen from "../features/people/screens/EditPersonScreen";
 import AddPersonScreen from "../features/people/screens/AddPersonScreen";
+import FamilySafetyScreen from "../features/family/screens/FamilySafetyScreen";
+import ExploreScreen from "../features/explore/screens/ExploreScreen";
+import TopCitiesScreen from "../features/explore/screens/TopCitiesScreen";
+import CityPlacesScreen from "../features/explore/screens/CityPlacesScreen";
+import PlaceDetailsScreen from "../features/explore/screens/PlaceDetailsScreen";
 
 export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
+  Family: undefined;
   CreateTrip: undefined;
   JoinGroup: undefined;
   TripDuration: { touristId: string };
@@ -56,6 +62,10 @@ export type RootStackParamList = {
   EditPerson: { person: any };
   AddPerson: undefined;
   AddGroupMember: undefined;
+  Explore: undefined;
+  TopCities: { categoryId: string; categoryTitle?: string; stateId?: string };
+  CityPlaces: { cityId: string; cityName?: string; initialCategory?: string };
+  PlaceDetails: { placeId: string; placeName?: string };
   // Transitions: undefined
 };
 
@@ -189,8 +199,8 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Itinerary"
-        component={ItineraryScreen}
+        name="Family"
+        component={FamilySafetyScreen}
         options={{
           tabBarIcon: ({ focused, color }) => (
             <View
@@ -200,24 +210,55 @@ function MainTabs() {
                 height: 60,
               }}
             >
-              <ItineraryIcon
-                color={focused ? activeColor : inactiveColor}
+              <MaterialCommunityIcons
+                name="shield-account"
                 size={26}
-                filled={focused}
+                color={focused ? activeColor : inactiveColor}
               />
               {focused && (
-                <>
-                  <Text
-                    style={{
-                      color: activeColor,
-                      fontSize: 10,
-                      marginTop: 2,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Itinerary
-                  </Text>
-                </>
+                <Text
+                  style={{
+                    color: activeColor,
+                    fontSize: 10,
+                    marginTop: 2,
+                    fontWeight: "600",
+                  }}
+                >
+                  Family
+                </Text>
+              )}
+            </View>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Explore"
+        component={ExploreScreen}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <View
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                height: 60,
+              }}
+            >
+              <MaterialCommunityIcons
+                name="compass-outline"
+                color={focused ? activeColor : inactiveColor}
+                size={26}
+              />
+              {focused && (
+                <Text
+                  style={{
+                    color: activeColor,
+                    fontSize: 10,
+                    marginTop: 2,
+                    fontWeight: "600",
+                  }}
+                >
+                  Explore
+                </Text>
               )}
             </View>
           ),
@@ -462,6 +503,21 @@ export function RootNavigator() {
           <Stack.Screen
             name="AddGroupMember"
             component={AddGroupMemberScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TopCities"
+            component={TopCitiesScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CityPlaces"
+            component={CityPlacesScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="PlaceDetails"
+            component={PlaceDetailsScreen}
             options={{ headerShown: false }}
           />
           {/* <Stack.Screen

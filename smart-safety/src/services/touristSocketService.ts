@@ -87,6 +87,17 @@ export interface SOSStatusUpdate {
   etaArrivalAt?: string;
 }
 
+export interface FamilyLocationUpdate {
+  sharerId: string;
+  name: string;
+  location?: { lat: number; lng: number };
+  accuracy?: number;
+  speed?: number;
+  heading?: number;
+  timestamp?: string;
+  active: boolean;
+}
+
 interface LocationCoords {
   lat: number;
   lng: number;
@@ -180,8 +191,44 @@ class TouristSocketService {
 
     // Handle risk grid updates
     this.socket.on("riskGridUpdated", (gridData: any) => {
-      console.log(`Risk grid update broadcasted: ${gridData.gridId}`);
+      console.log(`[TouristSocket] Risk grid update broadcasted: ${gridData.gridId}`);
       this.emit("riskGridUpdated", gridData);
+    });
+
+    // Handle real-time danger zone added from authority dashboard
+    this.socket.on("dangerZoneAdded", (zoneData: any) => {
+      console.log("[TouristSocket] 🚨 Danger zone added event received:", zoneData?.id || zoneData?.name);
+      this.emit("dangerZoneAdded", zoneData);
+    });
+
+    // Handle real-time danger zone removed
+    this.socket.on("dangerZoneRemoved", (zoneData: any) => {
+      console.log("[TouristSocket] 🗑️ Danger zone removed event received:", zoneData);
+      this.emit("dangerZoneRemoved", zoneData);
+    });
+
+    // Handle real-time map data updates
+    this.socket.on("mapDataUpdated", (mapData: any) => {
+      console.log("[TouristSocket] 🗺️ Map data updated event received:", mapData?.eventType);
+      this.emit("mapDataUpdated", mapData);
+    });
+
+    // Handle restricted zone warning directly from backend geofence engine
+    this.socket.on("restrictedZoneWarning", (warningData: any) => {
+      console.log("[TouristSocket] 🚨 Restricted zone warning received from backend:", warningData);
+      this.emit("restrictedZoneWarning", warningData);
+    });
+
+    // Handle geofence transitions
+    this.socket.on("geofenceTransition", (transitionData: any) => {
+      console.log("[TouristSocket] 🔄 Geofence transition received from backend:", transitionData);
+      this.emit("geofenceTransition", transitionData);
+    });
+
+    // Handle authority alerts
+    this.socket.on("authorityAlert", (alertData: any) => {
+      console.log("[TouristSocket] 📢 Authority alert received:", alertData?.alertId);
+      this.emit("authorityAlert", alertData);
     });
 
     // Handle safety score updates globally so app-level listeners always receive them
@@ -398,6 +445,60 @@ class TouristSocketService {
       this.activeSocketListeners.set("emergencyVehicleUpdate", new Set());
     }
     this.activeSocketListeners.get("emergencyVehicleUpdate")!.add(listener);
+  }
+
+  /**
+   * Listen for family / friend live location updates
+   */
+  onFamilyLocationUpdate(callback: (data: FamilyLocationUpdate) => void) {
+    if (!this.socket) {
+      this.pendingListeners.push({ event: "familyLocationUpdate", callback });
+      return () => {};
+    }
+
+    this.socket.off("familyLocationUpdate");
+    this.activeSocketListeners.delete("familyLocationUpdate");
+
+    const listener = (data: FamilyLocationUpdate) => {
+      callback(data);
+    };
+
+    this.socket.on("familyLocationUpdate", listener);
+
+    if (!this.activeSocketListeners.has("familyLocationUpdate")) {
+      this.activeSocketListeners.set("familyLocationUpdate", new Set());
+    }
+    this.activeSocketListeners.get("familyLocationUpdate")!.add(listener);
+
+    return () => {
+      this.socket?.off("familyLocationUpdate", listener);
+      this.activeSocketListeners.get("familyLocationUpdate")?.delete(listener);
+    };
+  }
+
+  /**
+   * Start live sharing with contacts via socket
+   */
+  startFamilySharing(recipientTouristIds: string[], sharerName: string) {
+    if (this.socket) {
+      this.socket.emit("startFamilySharing", {
+        sharerId: this.touristId,
+        recipientTouristIds,
+        sharerName,
+      });
+    }
+  }
+
+  /**
+   * Stop live sharing with contacts via socket
+   */
+  stopFamilySharing(recipientTouristIds?: string[]) {
+    if (this.socket) {
+      this.socket.emit("stopFamilySharing", {
+        sharerId: this.touristId,
+        recipientTouristIds,
+      });
+    }
   }
 
   /**
@@ -632,6 +733,11 @@ class TouristSocketService {
   on(event: string, callback: Function) {
     if (!this.listeners[event]) {
       this.listeners[event] = [];
+      if (this.socket) {
+        this.socket.on(event, (data: any) => {
+          this.emit(event, data);
+        });
+      }
     }
     this.listeners[event].push(callback);
 

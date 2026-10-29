@@ -48,6 +48,57 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
               0% { transform: scale(0.6); opacity: 1; }
               100% { transform: scale(2.2); opacity: 0; }
           }
+          /* Family & Friends Live Location Marker */
+          .family-marker-wrapper {
+              position: relative;
+              width: 24px;
+              height: 24px;
+          }
+          .family-dot {
+              background: linear-gradient(135deg, #10B981, #059669);
+              width: 18px;
+              height: 18px;
+              border: 3px solid #ffffff;
+              border-radius: 50%;
+              box-shadow: 0 2px 8px rgba(16, 185, 129, 0.6);
+              position: absolute;
+              top: 3px;
+              left: 3px;
+              z-index: 3;
+          }
+          .family-pulse {
+              position: absolute;
+              top: -3px;
+              left: -3px;
+              width: 30px;
+              height: 30px;
+              border-radius: 50%;
+              background: rgba(16, 185, 129, 0.35);
+              animation: family-marker-pulse-anim 1.8s infinite ease-out;
+              z-index: 1;
+          }
+          @keyframes family-marker-pulse-anim {
+              0% { transform: scale(0.6); opacity: 1; }
+              100% { transform: scale(2.2); opacity: 0; }
+          }
+          .family-name-tag {
+              position: absolute;
+              top: 24px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: rgba(15, 23, 42, 0.90);
+              color: #f8fafc;
+              padding: 2px 7px;
+              border-radius: 8px;
+              font-size: 10px;
+              font-weight: 700;
+              letter-spacing: 0.2px;
+              white-space: nowrap;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              pointer-events: none;
+              z-index: 4;
+          }
           /* Enhanced geofence styles */
           .geofence-popup {
               font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -515,14 +566,25 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
                   }
               }
               
-              // PRIORITY 3: Adjust styling based on category
-              if (fence.category) {
+              // PRIORITY 3: Adjust styling based on category & military classification
+              const checkName = String(fence.name || '').toLowerCase();
+              const checkCat = String(fence.category || '').toLowerCase();
+              if (
+                  checkName.includes('military') ||
+                  checkName.includes('air force') ||
+                  checkName.includes('cantonment') ||
+                  checkName.includes('airbase') ||
+                  checkCat.includes('military') ||
+                  checkCat.includes('strategic') ||
+                  (checkCat.includes('restricted') && (checkName.includes('military') || checkName.includes('zone')))
+              ) {
+                  color = '#4f46e5'; // Indigo for defense/military zones
+                  weight = 2;
+                  fillOpacity = 0.22;
+              } else if (fence.category) {
                   const cat = String(fence.category).toLowerCase();
                   if (cat.includes('nuclear')) {
                       color = '#e91e63'; // pink for nuclear
-                      weight = 3;
-                  } else if (cat.includes('military') || cat.includes('strategic')) {
-                      color = '#3f51b5'; // indigo for military
                       weight = 3;
                   } else if (cat.includes('border')) {
                       color = '#795548'; // brown for borders
@@ -756,8 +818,9 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
                   locationMarker = L.marker(latlng, { icon: customIcon, zIndexOffset: 1000 }).addTo(map);
                   
                   // Center map if requested or initial
-                  if (forceCenter) {
+                  if (forceCenter || !window._hasCenteredOnce) {
                       map.setView(latlng, zoom || 15);
+                      window._hasCenteredOnce = true;
                   }
                   
               } catch (error) {
@@ -1002,6 +1065,16 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
                               renderEmergencyVehicle(data.data);
                           }
                           break;
+                      case 'FAMILY_LOCATION_UPDATE':
+                          renderFamilyMember(data.data || data);
+                          break;
+                      case 'SET_FAMILY_LOCATIONS':
+                          if (Array.isArray(data.locations)) {
+                              Object.values(familyMarkers).forEach(function(m) { if (m) map.removeLayer(m); });
+                              familyMarkers = {};
+                              data.locations.forEach(function(loc) { renderFamilyMember(loc); });
+                          }
+                          break;
                       default:
                           console.log('Unknown message type:', data.type);
                   }
@@ -1036,6 +1109,48 @@ export const generateMapHTML = (tileConfig: TileServerConfig): string => {
                   emergencyMarkers[vehicleId] = L.marker([location.lat, location.lng], { icon: customIcon, zIndexOffset: 9999 })
                       .addTo(map)
                       .bindPopup('<b>Emergency Vehicle</b><br/>' + vehicleId);
+              }
+          }
+
+          let familyMarkers = {};
+          function renderFamilyMember(data) {
+              if (!map || !mapInitialized) return;
+              const sharerId = data.sharerId;
+              if (!sharerId) return;
+
+              if (data.active === false) {
+                  if (familyMarkers[sharerId]) {
+                      map.removeLayer(familyMarkers[sharerId]);
+                      delete familyMarkers[sharerId];
+                  }
+                  return;
+              }
+
+              const lat = Number(data.location?.lat ?? data.lat);
+              const lng = Number(data.location?.lng ?? data.lng);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+              const name = data.name || 'Circle Member';
+
+              if (familyMarkers[sharerId]) {
+                  familyMarkers[sharerId].setLatLng([lat, lng]);
+                  const tagEl = familyMarkers[sharerId].getElement()?.querySelector('.family-name-tag');
+                  if (tagEl) tagEl.textContent = name;
+              } else {
+                  const customIcon = L.divIcon({
+                      html: '<div class="family-marker-wrapper">' +
+                            '<div class="family-pulse"></div>' +
+                            '<div class="family-dot"></div>' +
+                            '<div class="family-name-tag">' + name + '</div>' +
+                            '</div>',
+                      iconSize: [24, 24],
+                      iconAnchor: [12, 12],
+                      className: ''
+                  });
+
+                  const marker = L.marker([lat, lng], { icon: customIcon, zIndexOffset: 950 }).addTo(map);
+                  marker.bindPopup('<b>' + name + '</b><br/><span style="color:#10b981">🟢 Sharing Live Location</span>');
+                  familyMarkers[sharerId] = marker;
               }
           }
 

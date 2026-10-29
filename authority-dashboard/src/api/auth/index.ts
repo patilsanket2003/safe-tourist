@@ -7,7 +7,7 @@
 import type { User } from "../../types";
 import { API_BASE_URL } from "../../config";
 
-const AUTH_BASE = import.meta.env.VITE_AUTH_API_BASE_URL || API_BASE_URL;
+const AUTH_BASE = API_BASE_URL;
 
 export type SignupPayload = {
   username: string;
@@ -137,24 +137,33 @@ export async function login(
   email: string,
   password: string,
 ): Promise<AuthResponse> {
-  const res = await fetch(`${AUTH_BASE}/api/auth/login-authority`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
+  try {
+    const res = await fetch(`${AUTH_BASE}/api/auth/login-authority`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data?.message || data?.error || `Login failed: ${res.status}`,
+        error: data?.error,
+      };
+    }
+    return {
+      success: true,
+      ...data,
+      user: mapBackendUser(data?.user),
+    } as AuthResponse;
+  } catch (err: any) {
+    console.error("Login fetch error:", err);
     return {
       success: false,
-      message: data?.message || data?.error || `Login failed: ${res.status}`,
-      error: data?.error,
+      message: err?.message || "Failed to connect to authentication server",
+      error: err?.message,
     };
   }
-  return {
-    success: true,
-    ...data,
-    user: mapBackendUser(data?.user),
-  } as AuthResponse;
 }
 
 export async function verifyTouristRecord(

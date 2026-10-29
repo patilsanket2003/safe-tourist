@@ -5,7 +5,7 @@ const { getDashboardStats } = require('../controllers/authority/dashboard')
 const { getMapOverview } = require('../controllers/authority/mapPage')
 const { predictCrowdSurge } = require('../controllers/authority/analytics');
 const { createEFIR, getEFIRSummaries } = require('../controllers/authority/eFIRPage');
-const { createGeoFenceToDangerLocation } = require('../controllers/geofenceController');
+const { createGeoFenceToDangerLocation, deleteDangerZone } = require('../controllers/geofenceController');
 const { verifyToken, isAuthority } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -19,6 +19,7 @@ router.get('/tourist-management', getTouristManagementData);
 router.get('/expired-tourists', getExpiredTouristData);
 router.get('/map-overview', getMapOverview);
 router.post('/map/danger-zone', createGeoFenceToDangerLocation);
+router.delete('/map/danger-zone/:id', deleteDangerZone);
 router.get('/efir', getEFIRSummaries);
 router.post('/efir', createEFIR);
 router.delete('/revoke/:id', revokeTourist);

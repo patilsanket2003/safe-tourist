@@ -11,8 +11,17 @@ let touristSockets = new Map(); // Map to store connected tourists
 let touristLastScores = new Map(); // Store last safety score for each tourist
 let touristLastLocations = new Map();
 
+// Family live location sharing map: sharerTouristId -> Set of recipientTouristIds
+let familyLiveSharingMap = new Map();
+let sharerMetaMap = new Map(); // sharerTouristId -> { name }
+
 // Export the locations map to be used by analytics or other controllers
 exports.getTouristLocations = () => touristLastLocations;
+exports.isTouristOnline = (touristId) => {
+  if (!touristId) return false;
+  const set = touristSockets.get(String(touristId));
+  return Boolean(set && set.size > 0);
+};
 
 const SAFETY_POLL_INTERVAL_MS =  60 * 1000; // 30 minutes
 let safetyPollTimer = null;
@@ -99,13 +108,21 @@ exports.init = (httpServer) => {
         const lat = Number(location?.lat ?? location?.latitude);
         const lng = Number(location?.lng ?? location?.longitude);
 
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0) && !(Math.abs(lat - 19.0760) < 0.001 && Math.abs(lng - 72.8777) < 0.001)) {
           touristLastLocations.set(touristId, {
             lat,
             lng,
             updatedAt: Date.now(),
             lastCalcAt: 0
           });
+          try {
+            const mongoose = require('mongoose');
+            const Tourist = require('../models/Tourist');
+            const query = mongoose.isValidObjectId(touristId)
+              ? { $or: [{ touristId: touristId }, { _id: touristId }] }
+              : { touristId: touristId };
+            Tourist.updateOne(query, { $set: { lastKnownLocation: { lat, lng, updatedAt: new Date() } } }).exec().catch(() => {});
+          } catch (e) {}
         }
 
         // Add socket to the set for this touristId (allow multiple devices per tourist)
@@ -123,7 +140,7 @@ exports.init = (httpServer) => {
         console.log(`Tourist ${touristId} registered with socket ${socket.id} (sockets for user: ${set.size})`);
 
         // Calculate initial safety score and check geofence
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
           try {
             const geofenceResult = await evaluateTouristGeofences(touristId, lat, lng);
             const safetyScoreData = await calculateSafetyScore(lat, lng);
@@ -158,6 +175,13 @@ exports.init = (httpServer) => {
               zoneStatus: geofenceResult.isInsideRestricted ? 'RESTRICTED ZONE' : 'SAFE'
             };
             io.to('authorities').emit('locationUpdate', initialPayload);
+            io.to('authorities').emit('touristStatusChanged', {
+              touristId,
+              id: touristId,
+              status: 'active',
+              isOnline: true,
+              location: { lat, lng }
+            });
             io.emit('tourist:location', initialPayload);
           } catch (error) {
             console.error(`Failed initial geofence/safety check for ${touristId}:`, error);
@@ -187,8 +211,8 @@ exports.init = (httpServer) => {
         const timestamp = data.timestamp || new Date().toISOString();
         const now = Date.now();
 
-        // Coordinates validation
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        // Coordinates validation - ignore (0, 0) and mock demo coordinates (19.076, 72.8777)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0) || (Math.abs(lat - 19.0760) < 0.001 && Math.abs(lng - 72.8777) < 0.001)) {
           return;
         }
 
@@ -225,6 +249,18 @@ exports.init = (httpServer) => {
           lastCalcAt: now
         });
 
+        // Persist to MongoDB Tourist document so locations survive restarts
+        if (!(lat === 0 && lng === 0)) {
+          try {
+            const mongoose = require('mongoose');
+            const Tourist = require('../models/Tourist');
+            const query = mongoose.isValidObjectId(touristId)
+              ? { $or: [{ touristId: touristId }, { _id: touristId }] }
+              : { touristId: touristId };
+            Tourist.updateOne(query, { $set: { lastKnownLocation: { lat, lng, updatedAt: new Date() } } }).exec().catch(() => {});
+          } catch (e) {}
+        }
+
         // ==========================================
         // 1. GEOSPATIAL / GEOFENCE EVALUATION
         // ==========================================
@@ -241,29 +277,7 @@ exports.init = (httpServer) => {
               io.to('authorities').emit('geofenceAlert', ev);
               io.to('authorities').emit('geofence:enter', ev);
 
-              // Also emit newSOSAlert payload so it immediately triggers the dashboard's audio alarm, toast & banner
-              const alertId = `alert-rz-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-              io.to('authorities').emit('newSOSAlert', {
-                alertId: alertId,
-                id: alertId,
-                touristId: touristId,
-                touristName: `Tourist ${touristId}`,
-                severity: 'critical',
-                type: 'alert',
-                status: 'active',
-                priority: 'critical',
-                safetyScore: 20,
-                location: {
-                  type: 'Point',
-                  coordinates: [lng, lat],
-                  lat: lat,
-                  lng: lng,
-                  locationName: ev.zoneName
-                },
-                locationName: ev.zoneName,
-                timestamp: ev.timestamp,
-                message: ev.alertMessage
-              });
+              // Geofence alert sent to authorities for UI status update (NO SOS audio alarm)
 
               // Notify the tourist phone
               socket.emit('restrictedZoneWarning', {
@@ -318,7 +332,8 @@ exports.init = (httpServer) => {
           socket.emit('safetyScoreUpdate', {
             ...safetyScoreData,
             safetyScore: newScore,
-            safetyLevel: geofenceResult.isInsideRestricted ? 'Critical' : safetyScoreData.safetyLevel
+            safetyLevel: geofenceResult.isInsideRestricted ? 'CRITICAL' : safetyScoreData.safetyLevel,
+            safetyColor: geofenceResult.isInsideRestricted ? '#dc2626' : safetyScoreData.safetyColor,
           });
         } catch (scoreErr) {
           newScore = geofenceResult.isInsideRestricted ? 20 : 85;
@@ -345,10 +360,44 @@ exports.init = (httpServer) => {
         // Also emit standard project events
         io.emit('tourist:location', locationBroadcastPayload);
 
+        // 4. Forward live location to authorized family & friend circle recipients
+        const familyRecipients = familyLiveSharingMap.get(touristId);
+        if (familyRecipients && familyRecipients.size > 0) {
+          const meta = sharerMetaMap.get(touristId) || { name: 'Family Contact' };
+          const familyPayload = {
+            sharerId: touristId,
+            name: meta.name || `Member ${touristId}`,
+            location: { lat, lng },
+            accuracy: accuracy || 5,
+            speed: speed,
+            heading: heading,
+            timestamp: timestamp,
+            active: true
+          };
+
+          for (const recipientId of familyRecipients) {
+            io.to(`tourist:${recipientId}`).emit('familyLocationUpdate', familyPayload);
+          }
+          console.log(`👨‍👩‍👧 Live location shared from ${touristId} (${meta.name}) to ${familyRecipients.size} circle contact(s)`);
+        }
+
         console.log(`📍 Live location sent for ${touristId}: [${lat.toFixed(5)}, ${lng.toFixed(5)}] Status: ${locationBroadcastPayload.zoneStatus}`);
       } catch (err) {
         console.error('❌ Error handling updateTouristLocation:', err);
       }
+    });
+
+    // Handle real-time family sharing toggle via socket
+    socket.on('startFamilySharing', (data) => {
+      const sharerId = socket.data?.touristId || data?.sharerId;
+      if (!sharerId) return;
+      exports.startFamilyShare(sharerId, data.recipientTouristIds || [], data.sharerName);
+    });
+
+    socket.on('stopFamilySharing', (data) => {
+      const sharerId = socket.data?.touristId || data?.sharerId;
+      if (!sharerId) return;
+      exports.stopFamilyShare(sharerId, data.recipientTouristIds);
     });
 
 
@@ -396,7 +445,16 @@ exports.init = (httpServer) => {
           if (set.size === 0) {
             touristSockets.delete(tid);
             touristLastScores.delete(tid);
-            touristLastLocations.delete(tid); // cleanup location too
+            // Do NOT delete from touristLastLocations: preserve the stopped last known location!
+            const lastLoc = touristLastLocations.get(tid);
+            console.log(`Tourist ${tid} is now offline. Preserving last location:`, lastLoc);
+            io.to('authorities').emit('touristStatusChanged', {
+              touristId: tid,
+              id: tid,
+              status: 'inactive',
+              isOnline: false,
+              location: lastLoc || null
+            });
           } else {
             console.log(`Remaining tourist sockets for ${tid}: ${set.size}`);
           }
@@ -631,7 +689,93 @@ exports.emitDangerZoneAdded = async (zoneData) => {
   if (io) {
     io.to('authorities').emit('dangerZoneAdded', zoneData);
     io.to('tourists').emit('dangerZoneAdded', zoneData);
-    console.log(`New danger zone broadcasted: ${zoneData.id || zoneData._id}`);
+    console.log(`🚨 [Realtime] New danger zone broadcasted: ${zoneData.id || zoneData._id} (${zoneData.name})`);
+
+    // Immediately evaluate all active tourists against this newly created danger zone
+    try {
+      const coords = zoneData.coords || zoneData.coordinates;
+      const radiusKm = zoneData.radiusKm || (zoneData.radius ? zoneData.radius / 1000 : 1);
+      const radiusMeters = radiusKm * 1000;
+      const zoneName = zoneData.name || 'Danger Zone';
+      const riskLevel = zoneData.riskLevel || 'High';
+      const zoneId = zoneData.id || zoneData._id || `dz-${Date.now()}`;
+
+      if (coords && Array.isArray(coords) && coords.length === 2) {
+        const zoneLat = Number(coords[0]);
+        const zoneLng = Number(coords[1]);
+
+        touristLastLocations.forEach((loc, touristId) => {
+          if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) return;
+          const dMeters = calculateDistance(loc.lat, loc.lng, zoneLat, zoneLng);
+
+          if (dMeters <= radiusMeters) {
+            console.log(`🚨🚨 [Realtime] Active tourist ${touristId} is INSIDE new danger zone: ${zoneName} (${Math.round(dMeters)}m <= ${radiusMeters}m)! Emitting instant siren warning!`);
+
+            const warningPayload = {
+              status: 'RESTRICTED ZONE',
+              isInside: true,
+              zoneName: zoneName,
+              riskLevel: riskLevel,
+              message: `🚨 WARNING: You are inside newly declared danger zone: ${zoneName}! Emergency siren activated!`,
+              distanceMeters: Math.round(dMeters),
+              timestamp: new Date().toISOString()
+            };
+
+            const transitionPayload = {
+              status: 'RESTRICTED ZONE',
+              event: 'ENTER',
+              zone: zoneName,
+              alertMessage: `🚨 WARNING: You entered active danger zone: ${zoneName}! Emergency siren activated!`
+            };
+
+            // Emit to tourist rooms
+            io.to(`tourist:${touristId}`).emit('restrictedZoneWarning', warningPayload);
+            io.to(`tourist:${touristId}`).emit('geofenceTransition', transitionPayload);
+            io.to('tourists').emit('restrictedZoneWarning', warningPayload);
+            io.to('tourists').emit('geofenceTransition', transitionPayload);
+
+            // Also emit directly on any active socket matching this tourist
+            const sSet = touristSockets.get(touristId);
+            if (sSet) {
+              sSet.forEach((sock) => {
+                try {
+                  sock.emit('restrictedZoneWarning', warningPayload);
+                  sock.emit('geofenceTransition', transitionPayload);
+                } catch (_) {}
+              });
+            }
+
+            // Alert authority dashboard that tourist is inside
+            io.to('authorities').emit('restrictedZoneAlert', {
+              touristId,
+              zoneId,
+              zoneName,
+              event: 'ENTER',
+              riskLevel,
+              alertMessage: `🚨 RESTRICTED ZONE ALERT: Tourist ${touristId} is inside newly created danger zone: ${zoneName}!`,
+              latitude: loc.lat,
+              longitude: loc.lng,
+              distanceMeters: Math.round(dMeters),
+              timestamp: new Date().toISOString()
+            });
+          }
+        });
+      }
+    } catch (evalErr) {
+      console.error("[Realtime] Error evaluating tourists for new danger zone:", evalErr);
+    }
+  }
+};
+
+/**
+ * Emits a danger zone removed event to authority and tourist clients.
+ * @param {object} zoneData The removed danger zone data or ID.
+ */
+exports.emitDangerZoneRemoved = async (zoneData) => {
+  if (io) {
+    io.to('authorities').emit('dangerZoneRemoved', zoneData);
+    io.to('tourists').emit('dangerZoneRemoved', zoneData);
+    console.log(`Danger zone removed broadcasted: ${zoneData?.id || zoneData?._id || zoneData}`);
   }
 };
 
@@ -687,17 +831,25 @@ async function runPeriodicSafetyScoreUpdate() {
     if (!loc || !loc.lat || !loc.lng) continue;
 
     try {
+      const geofenceResult = await evaluateTouristGeofences(touristId, loc.lat, loc.lng);
       const safetyScoreData = await calculateSafetyScore(loc.lat, loc.lng);
 
       const previousScore = touristLastScores.get(touristId) || 80;
-      const newScore = safetyScoreData.safetyScore;
+      const newScore = geofenceResult.isInsideRestricted ? 20 : safetyScoreData.safetyScore;
+
+      const finalSafetyData = {
+        ...safetyScoreData,
+        safetyScore: newScore,
+        safetyLevel: geofenceResult.isInsideRestricted ? 'CRITICAL' : safetyScoreData.safetyLevel,
+        safetyColor: geofenceResult.isInsideRestricted ? '#dc2626' : safetyScoreData.safetyColor,
+      };
 
       // Update stored score
       touristLastScores.set(touristId, newScore);
 
       // Emit to all sockets of this tourist
       for (const socket of socketSet) {
-        socket.emit('safetyScoreUpdate', safetyScoreData);
+        socket.emit('safetyScoreUpdate', finalSafetyData);
       }
 
       console.log(
@@ -723,3 +875,111 @@ async function runPeriodicSafetyScoreUpdate() {
     }
   }
 }
+
+/**
+ * Start live location sharing for a sharer with recipient IDs
+ */
+exports.startFamilyShare = (sharerId, recipientIds, sharerName) => {
+  if (!familyLiveSharingMap.has(sharerId)) {
+    familyLiveSharingMap.set(sharerId, new Set());
+  }
+  const set = familyLiveSharingMap.get(sharerId);
+  (recipientIds || []).forEach((id) => set.add(id));
+  sharerMetaMap.set(sharerId, { name: sharerName });
+
+  // If we already have latest location of sharer, immediately notify recipients
+  const lastLoc = touristLastLocations.get(sharerId);
+  if (io && lastLoc) {
+    const payload = {
+      sharerId,
+      name: sharerName || `Member ${sharerId}`,
+      location: { lat: lastLoc.lat, lng: lastLoc.lng },
+      accuracy: lastLoc.accuracy || 5,
+      speed: lastLoc.speed || 0,
+      heading: lastLoc.heading || 0,
+      timestamp: new Date().toISOString(),
+      active: true
+    };
+    (recipientIds || []).forEach((id) => {
+      io.to(`tourist:${id}`).emit('familyLocationUpdate', payload);
+    });
+  }
+};
+
+/**
+ * Stop live location sharing with recipient IDs (or all if empty)
+ */
+exports.stopFamilyShare = (sharerId, recipientIds) => {
+  if (!familyLiveSharingMap.has(sharerId)) return;
+  const set = familyLiveSharingMap.get(sharerId);
+  const meta = sharerMetaMap.get(sharerId) || { name: 'Family Member' };
+
+  if (!recipientIds || recipientIds.length === 0) {
+    for (const recipientId of set) {
+      if (io) {
+        io.to(`tourist:${recipientId}`).emit('familyLocationUpdate', {
+          sharerId,
+          name: meta.name,
+          active: false
+        });
+      }
+    }
+    familyLiveSharingMap.delete(sharerId);
+    sharerMetaMap.delete(sharerId);
+  } else {
+    recipientIds.forEach((id) => {
+      set.delete(id);
+      if (io) {
+        io.to(`tourist:${id}`).emit('familyLocationUpdate', {
+          sharerId,
+          name: meta.name,
+          active: false
+        });
+      }
+    });
+    if (set.size === 0) {
+      familyLiveSharingMap.delete(sharerId);
+      sharerMetaMap.delete(sharerId);
+    }
+  }
+};
+
+/**
+ * Get all sharers currently sharing with this recipient
+ */
+exports.getFamilySharersForRecipient = (recipientId) => {
+  const sharers = new Set();
+  for (const [sharerId, recipients] of familyLiveSharingMap.entries()) {
+    if (recipients.has(recipientId)) {
+      sharers.add(sharerId);
+    }
+  }
+  return sharers;
+};
+
+/**
+ * Get active locations of all sharers currently sharing with this recipient
+ */
+exports.getActiveSharedLocationsForRecipient = (recipientId) => {
+  const list = [];
+  for (const [sharerId, recipients] of familyLiveSharingMap.entries()) {
+    if (recipients.has(recipientId)) {
+      const lastLoc = touristLastLocations.get(sharerId);
+      const meta = sharerMetaMap.get(sharerId) || { name: 'Family Member' };
+      if (lastLoc) {
+        list.push({
+          sharerId,
+          name: meta.name,
+          location: { lat: lastLoc.lat, lng: lastLoc.lng },
+          accuracy: lastLoc.accuracy || 5,
+          speed: lastLoc.speed || 0,
+          heading: lastLoc.heading || 0,
+          timestamp: new Date(lastLoc.updatedAt).toISOString(),
+          active: true
+        });
+      }
+    }
+  }
+  return list;
+};
+

@@ -14,7 +14,7 @@ import MapActionButtons from './OsmMap/MapActionButtons';
 import { OsmMapProps, LocationData } from './OsmMap/types';
 import { reverseGeocode } from './OsmMap/geoUtils';
 import { useLocation } from '../../../context/LocationContext';
-import { GeoFence, filterFencesByDistance, haversineKm } from '../../../utils/geofenceLogic';
+import { GeoFence, filterFencesByDistance, haversineKm, isMilitaryZone } from '../../../utils/geofenceLogic';
 
 // Default tile configuration
 const DEFAULT_TILE_CONFIG = {
@@ -62,6 +62,7 @@ const OsmMap = forwardRef(({
   const [lastLocationForFilter, setLastLocationForFilter] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState<boolean>(false);
   const [showHazards, setShowHazards] = useState(false); // Default to hiding hazards initially to unclutter map
+  const [showMilitaryZones, setShowMilitaryZones] = useState(false);
 
   const webViewRef = useRef<WebView>(null);
 
@@ -189,9 +190,13 @@ const OsmMap = forwardRef(({
     if (!webViewRef.current || !mapReady) return;
 
     const allFences = geoFences || geoFencesToSend;
-    const fences = showHazards ? allFences : [];
-
     if (!Array.isArray(allFences)) return;
+
+    const fences = allFences.filter((f) => {
+      const isMil = isMilitaryZone(f);
+      if (isMil) return showMilitaryZones;
+      return showHazards;
+    });
 
     try {
       console.log(`Sending ${fences.length} geofences to WebView (out of ${allFences.length} total)`);
@@ -199,7 +204,7 @@ const OsmMap = forwardRef(({
     } catch (e) {
       console.warn('failed to post geoFences to webview', e);
     }
-  }, [mapReady, geoFences, geoFencesToSend, showHazards]);
+  }, [mapReady, geoFences, geoFencesToSend, showHazards, showMilitaryZones]);
 
   // Cleanup on unmount
   useEffect(() => {

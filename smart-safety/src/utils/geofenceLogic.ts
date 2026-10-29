@@ -246,3 +246,41 @@ export function filterFencesByDistance(
       return distance <= radiusKm
     })
 }
+
+/**
+ * Identify if a geofence represents a military base, defense installation, or restricted strategic area.
+ */
+export function isMilitaryZone(fence: any): boolean {
+  if (!fence) return false;
+  const text = [
+    fence.name,
+    fence.category,
+    fence.source,
+    fence.type,
+    fence.state,
+    fence.metadata?.category,
+    fence.metadata?.source,
+    fence.visualStyle?.zoneType,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    text.includes('military') ||
+    text.includes('airbase') ||
+    text.includes('air force') ||
+    text.includes('cantonment') ||
+    text.includes('airstrip') ||
+    text.includes('army') ||
+    text.includes('navy') ||
+    text.includes('naval') ||
+    text.includes('defense') ||
+    text.includes('defence') ||
+    text.includes('siachen') ||
+    text.includes('daulat beg') ||
+    text.includes('point 5353') ||
+    (text.includes('restricted') && (text.includes('area') || text.includes('zone') || text.includes('military')))
+  );
+}
+

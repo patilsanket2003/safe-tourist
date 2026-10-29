@@ -110,18 +110,30 @@ import { Audio } from 'expo-av'
 let sirenSound: Audio.Sound | null = null;
 
 export interface SirenState {
-  isPlaying: boolean;
+  isPlaying: boolean;       // whether siren audio/vibration are currently ringing
+  isInsideZone: boolean;    // whether user is currently inside a restricted/red zone (controls pop-up visibility)
+  zoneId?: string;
+  zoneName?: string;
   title: string;
   body: string;
+  silenced: boolean;        // whether user turned off the siren during this active session
 }
 
 let activeSirenState: SirenState = {
   isPlaying: false,
+  isInsideZone: false,
   title: '',
   body: '',
+  silenced: false,
 };
 
 const sirenListeners = new Set<(state: SirenState) => void>();
+
+function notifySirenListeners() {
+  sirenListeners.forEach((cb) => {
+    try { cb(activeSirenState); } catch (_) {}
+  });
+}
 
 export function subscribeToSirenState(cb: (state: SirenState) => void) {
   sirenListeners.add(cb);
@@ -131,41 +143,85 @@ export function subscribeToSirenState(cb: (state: SirenState) => void) {
   };
 }
 
-// Global audio unlock listener for web browsers
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
   const unlockAudio = () => {
+    resumeWebSirenAudio();
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
         const dummy = new AudioCtx();
         dummy.resume().then(() => {
           setTimeout(() => dummy.close(), 100);
-        });
+        }).catch(() => {});
       }
     } catch (_) {}
-    window.removeEventListener('click', unlockAudio);
-    window.removeEventListener('touchstart', unlockAudio);
   };
-  window.addEventListener('click', unlockAudio, { once: true });
-  window.addEventListener('touchstart', unlockAudio, { once: true });
+  window.addEventListener('click', unlockAudio);
+  window.addEventListener('touchstart', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
 }
 
 let webAudioCtx: any = null;
+let webAudioElement: any = null;
 let webOsc1: any = null;
 let webOsc2: any = null;
 let webGain: any = null;
 let webModulationInterval: any = null;
 let vibrationLoopInterval: any = null;
+let lastSilencedAt = 0;
+
+export function isSirenActive(): boolean {
+  return activeSirenState.isPlaying;
+}
+
+export function getLastSilencedAt(): number {
+  return lastSilencedAt;
+}
+
+export function resumeWebSirenAudio() {
+  if (Platform.OS === 'web') {
+    if (activeSirenState.isPlaying) {
+      if (!webAudioCtx && !webAudioElement) {
+        startContinuousWebSiren();
+      }
+    }
+    if (webAudioCtx && webAudioCtx.state === 'suspended') {
+      webAudioCtx.resume().then(() => {
+        console.log('[AlertHelpers] ✅ webAudioCtx successfully resumed');
+      }).catch((e: any) => console.warn('[AlertHelpers] webAudioCtx resume error:', e));
+    }
+    if (webAudioElement && webAudioElement.paused) {
+      webAudioElement.play().catch(() => {});
+    }
+  }
+}
 
 function startContinuousWebSiren() {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   stopContinuousWebSiren();
+
+  // 1. Play looping audio element (works on mobile browsers with user gestures)
+  try {
+    const DomAudio = (window as any).Audio;
+    if (DomAudio) {
+      webAudioElement = new DomAudio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+      webAudioElement.loop = true;
+      webAudioElement.volume = 1.0;
+      webAudioElement.play().catch((e: any) => {
+        console.log('[AlertHelpers] Audio element waiting for user gesture:', e?.message);
+      });
+    }
+  } catch (err) {
+    console.warn('[AlertHelpers] Audio element creation error:', err);
+  }
+
+  // 2. Synthesize wailing siren via Web Audio API oscillators
   try {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     webAudioCtx = new AudioCtx();
     if (webAudioCtx.state === 'suspended') {
-      webAudioCtx.resume();
+      webAudioCtx.resume().catch(() => {});
     }
 
     webOsc1 = webAudioCtx.createOscillator();
@@ -175,7 +231,7 @@ function startContinuousWebSiren() {
     webOsc1.type = 'sawtooth';
     webOsc2.type = 'square';
 
-    webGain.gain.setValueAtTime(0.4, webAudioCtx.currentTime);
+    webGain.gain.setValueAtTime(0.5, webAudioCtx.currentTime);
 
     // Initial frequency
     webOsc1.frequency.setValueAtTime(650, webAudioCtx.currentTime);
@@ -208,6 +264,13 @@ function startContinuousWebSiren() {
 }
 
 function stopContinuousWebSiren() {
+  if (webAudioElement) {
+    try {
+      webAudioElement.pause();
+      webAudioElement.currentTime = 0;
+    } catch (_) {}
+    webAudioElement = null;
+  }
   if (webModulationInterval) {
     clearInterval(webModulationInterval);
     webModulationInterval = null;
@@ -261,6 +324,7 @@ function stopContinuousVibration() {
 }
 
 export async function stopSirenAlert() {
+  lastSilencedAt = Date.now();
   stopContinuousWebSiren();
   stopContinuousVibration();
   if (sirenSound) {
@@ -271,29 +335,87 @@ export async function stopSirenAlert() {
     sirenSound = null;
   }
 
+  // Siren audio is turned off, but user is still in the restricted zone so isInsideZone remains true
   activeSirenState = {
+    ...activeSirenState,
     isPlaying: false,
-    title: '',
-    body: '',
+    silenced: true,
   };
-  sirenListeners.forEach((cb) => {
-    try { cb(activeSirenState); } catch (_) {}
-  });
+  notifySirenListeners();
 }
 
-export async function triggerSirenAlert(title: string, body?: string) {
+export async function exitRestrictedZone(zoneId?: string) {
+  console.log(`[AlertHelpers] 🟢 Tourist moved out of restricted/danger zone (${zoneId || 'all'}). Auto-clearing siren and pop-up.`);
+  lastSilencedAt = 0;
+  stopContinuousWebSiren();
+  stopContinuousVibration();
+  if (sirenSound) {
+    try {
+      await sirenSound.stopAsync();
+      await sirenSound.unloadAsync();
+    } catch (_) {}
+    sirenSound = null;
+  }
+
+  // Auto turn off both siren and pop-up, and reset silenced state
+  activeSirenState = {
+    isPlaying: false,
+    isInsideZone: false,
+    zoneId: undefined,
+    zoneName: undefined,
+    title: '',
+    body: '',
+    silenced: false,
+  };
+  notifySirenListeners();
+}
+
+let sirenAuthEnabled = false;
+
+export function setSirenAuthStatus(isAuthenticated: boolean) {
+  sirenAuthEnabled = isAuthenticated;
+  if (!isAuthenticated) {
+    exitRestrictedZone().catch(() => {});
+  }
+}
+
+export function isSirenAuthEnabled(): boolean {
+  return sirenAuthEnabled;
+}
+
+export async function triggerSirenAlert(
+  title: string,
+  body?: string,
+  options?: { zoneId?: string; zoneName?: string; forceAudio?: boolean }
+) {
   try {
+    if (!sirenAuthEnabled) {
+      console.log('[AlertHelpers] Ignored triggerSirenAlert because tourist is not logged in / authenticated.');
+      return;
+    }
     const cfg = await getAlertConfig();
     if (!cfg.emergency) return;
 
+    const zId = options?.zoneId || activeSirenState.zoneId || 'restricted-zone';
+    const zName = options?.zoneName || activeSirenState.zoneName || title;
+
+    // If already inside this zone and user has silenced the siren during this session:
+    // DO NOT ring the siren again! Keep the pop-up active without sound.
+    if (activeSirenState.isInsideZone && activeSirenState.silenced && !options?.forceAudio) {
+      console.log(`[AlertHelpers] Siren was already silenced for active session in zone (${zId}). Not re-triggering sound.`);
+      return;
+    }
+
     activeSirenState = {
       isPlaying: true,
+      isInsideZone: true,
+      zoneId: zId,
+      zoneName: zName,
       title: title || '⚠️ DANGER / RESTRICTED ZONE DETECTED',
       body: body || 'You are inside a restricted or danger zone. Please proceed to safety.',
+      silenced: false,
     };
-    sirenListeners.forEach((cb) => {
-      try { cb(activeSirenState); } catch (_) {}
-    });
+    notifySirenListeners();
     
     // Continuous vibration until turned off
     if (cfg.vibration) {

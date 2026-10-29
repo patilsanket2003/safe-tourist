@@ -2,7 +2,7 @@ const GlobalHazard = require('../models/GlobalHazard');
 
 exports.getNearbyHazards = async (req, res) => {
   try {
-    const { lat, lng, radiusKm = 50 } = req.query;
+    const { lat, lng, radiusKm = 50, hideMilitary, includeMilitary } = req.query;
 
     if (!lat || !lng) {
       return res.status(400).json({ success: false, error: 'Please provide lat and lng' });
@@ -12,8 +12,9 @@ exports.getNearbyHazards = async (req, res) => {
     const longitude = parseFloat(lng);
     const latitude = parseFloat(lat);
 
-    const hazards = await GlobalHazard.find({
+    const query = {
       active: true,
+      source_id: { $ne: 'osm-area-554975362' },
       geometry: {
         $near: {
           $geometry: {
@@ -23,7 +24,14 @@ exports.getNearbyHazards = async (req, res) => {
           $maxDistance: radiusMeters
         }
       }
-    });
+    };
+
+    if (hideMilitary === 'true' || includeMilitary === 'false') {
+      query.type = { $ne: 'restricted area' };
+      query.name = { $not: /military/i };
+    }
+
+    const hazards = await GlobalHazard.find(query);
 
     res.status(200).json({
       success: true,

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView, Platform, Switch } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -16,10 +16,14 @@ interface StyleBottomSheetProps {
   onToggle: () => void;
   selectedStyle: string;
   onSelectStyle: (style: string) => void;
+  showHazards?: boolean;
+  onToggleHazards?: () => void;
+  showMilitaryZones?: boolean;
+  onToggleMilitary?: () => void;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = 450; // Slightly reduced for compact feel
+const SHEET_HEIGHT = 560; // Expanded to accommodate layer toggles
 const SPRING_CONFIG = {
   damping: 20,
   stiffness: 140,
@@ -74,6 +78,10 @@ export default function StyleBottomSheet({
   onToggle,
   selectedStyle,
   onSelectStyle,
+  showHazards = true,
+  onToggleHazards,
+  showMilitaryZones = false,
+  onToggleMilitary,
 }: StyleBottomSheetProps) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(SHEET_HEIGHT);
@@ -170,7 +178,49 @@ export default function StyleBottomSheet({
         </TouchableOpacity>
 
         <View style={styles.contentContainer}>
-          <Text style={styles.sectionTitle}>Map Style</Text>
+          {/* Map Layers Section */}
+          <Text style={styles.sectionTitle}>Map Layers</Text>
+          <View style={styles.layerTogglesContainer}>
+            {/* Civilian Hazards Toggle */}
+            <View style={styles.layerToggleItem}>
+              <View style={styles.layerToggleLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: '#fef3c7' }]}>
+                  <MaterialCommunityIcons name="alert-circle-outline" size={22} color="#F59E0B" />
+                </View>
+                <View style={styles.textContainer}>
+                  <Text style={styles.itemTitle}>Civilian Hazards</Text>
+                  <Text style={styles.itemSubtitle}>Floods, landslides & high-risk zones</Text>
+                </View>
+              </View>
+              <Switch
+                value={showHazards}
+                onValueChange={onToggleHazards}
+                trackColor={{ false: '#e2e8f0', true: '#fde68a' }}
+                thumbColor={showHazards ? '#F59E0B' : '#94a3b8'}
+              />
+            </View>
+
+            {/* Military Zones Toggle */}
+            <View style={styles.layerToggleItem}>
+              <View style={styles.layerToggleLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: '#eef2ff' }]}>
+                  <MaterialCommunityIcons name="shield-lock-outline" size={22} color="#4F46E5" />
+                </View>
+                <View style={styles.textContainer}>
+                  <Text style={styles.itemTitle}>Military & Strategic Zones</Text>
+                  <Text style={styles.itemSubtitle}>Hide to prevent overlapping city views</Text>
+                </View>
+              </View>
+              <Switch
+                value={showMilitaryZones}
+                onValueChange={onToggleMilitary}
+                trackColor={{ false: '#e2e8f0', true: '#c7d2fe' }}
+                thumbColor={showMilitaryZones ? '#4F46E5' : '#94a3b8'}
+              />
+            </View>
+          </View>
+
+          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>Map Style</Text>
 
           <ScrollView
             contentContainerStyle={{ paddingBottom: bottomPadding + 20 }}
@@ -185,6 +235,27 @@ export default function StyleBottomSheet({
 }
 
 const styles = StyleSheet.create({
+  layerTogglesContainer: {
+    gap: 8,
+    marginBottom: 4,
+  },
+  layerToggleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  layerToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
   backdrop: {
     ...StyleSheet.absoluteFill as any,
     backgroundColor: 'rgba(0,0,0,0.4)',
