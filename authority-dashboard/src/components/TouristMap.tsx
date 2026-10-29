@@ -32,15 +32,14 @@ import {
 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import * as maplibregl from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 
-// Ensure MapLibre Web Worker loads reliably
+// Ensure MapLibre Web Worker is loaded via Vite bundled worker
 if (typeof window !== "undefined") {
   try {
-    (maplibregl as any).setWorkerUrl?.(
-      "https://unpkg.com/maplibre-gl@6.12.0/dist/maplibre-gl-worker.mjs",
-    );
+    (maplibregl as any).setWorkerUrl?.(maplibreWorkerUrl);
   } catch (e) {
-    // Ignore
+    console.warn("Failed to set MapLibre workerUrl:", e);
   }
 }
 
@@ -256,13 +255,14 @@ const TouristMap: React.FC = () => {
         safetyScore: number;
       }>,
     ): MapOverviewResponse => {
+      const baseTourists = mapResult?.mapData?.tourists || [];
       const existingById = new globalThis.Map(
-        mapResult.mapData.tourists.map((tourist) => [tourist.id, tourist]),
+        baseTourists.map((tourist) => [tourist.id, tourist]),
       );
 
       const updatedBySafety = new globalThis.Map<string, any>();
 
-      safetyUsers.forEach((row) => {
+      (safetyUsers || []).forEach((row) => {
         const existing = existingById.get(row.userId);
         updatedBySafety.set(row.userId, {
           id: row.userId,
@@ -275,8 +275,8 @@ const TouristMap: React.FC = () => {
           status: existing?.status || ("active" as const),
           safetyScore: row.safetyScore ?? existing?.safetyScore ?? 0,
           location: {
-            lat: row.location.lat,
-            lng: row.location.lng,
+            lat: row.location?.lat ?? 19.2714,
+            lng: row.location?.lng ?? 72.9691,
           },
           type: "tourist" as const,
         });
@@ -284,12 +284,12 @@ const TouristMap: React.FC = () => {
 
       // Preserve existing map-overview tourists if they are not present
       // in safety latest feed, and overwrite with safety feed where available.
-      const mergedTourists = mapResult.mapData.tourists
+      const mergedTourists = baseTourists
         .map((tourist) => updatedBySafety.get(tourist.id) || tourist)
         .concat(
           Array.from(updatedBySafety.values()).filter(
             (tourist) =>
-              !mapResult.mapData.tourists.some(
+              !baseTourists.some(
                 (existingTourist) => existingTourist.id === tourist.id,
               ),
           ),
@@ -298,8 +298,12 @@ const TouristMap: React.FC = () => {
       return {
         ...mapResult,
         mapData: {
-          ...mapResult.mapData,
+          ...mapResult?.mapData,
           tourists: mergedTourists,
+          zones: mapResult?.mapData?.zones || [],
+          activeAlerts: mapResult?.mapData?.activeAlerts || [],
+          riskGrids: mapResult?.mapData?.riskGrids || [],
+          incidents: mapResult?.mapData?.incidents || [],
         },
       };
     },
@@ -340,20 +344,22 @@ const TouristMap: React.FC = () => {
         }),
       ]);
 
+      const baseTourists = mapResult?.mapData?.tourists || [];
       console.log(
         "[Map] Source counts:",
         "mapOverviewTourists=",
-        mapResult.mapData.tourists.length,
+        baseTourists.length,
         "latestSafetyUsers=",
-        latestUsers.length,
+        (latestUsers || []).length,
       );
       const mergedMapResult =
-        latestUsers.length > 0
+        (latestUsers || []).length > 0
           ? mergeSafetyUsers(mapResult, latestUsers)
           : mapResult;
+      const finalTourists = mergedMapResult?.mapData?.tourists || [];
       console.log(
         "[Map] Render tourists count:",
-        mergedMapResult.mapData.tourists.length,
+        finalTourists.length,
       );
       setData(mergedMapResult);
       if (zonesResult) setStyledZones(zonesResult);
@@ -1410,6 +1416,8 @@ const TouristMap: React.FC = () => {
         <div className="xl:col-span-2 relative h-full rounded-xl shadow-lg border border-gray-200 overflow-hidden bg-[#e5e3df]">
           <Map
             ref={mapRef}
+            mapLib={maplibregl as any}
+            workerUrl={maplibreWorkerUrl}
             initialViewState={{
               longitude: 72.9691,
               latitude: 19.2714,
